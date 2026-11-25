@@ -10,8 +10,10 @@
  *   NUNCA toca la tabla `notes` ni ninguna otra columna clinica. UPSERT por ON CONFLICT(cama):
  *   actualiza censales y deja intacto el resto de la fila (id estable -> la nota sigue ligada).
  *   Unica escritura fuera de `patients` (25 nov 2026): el MOTIVO del egreso (alta / defuncion) en la copia de
- *   `archive` del paciente, tomado de las secciones ALTAS y DEFUNCIONES de la hoja, via archive_set_egreso y solo
- *   si nadie lo eligio antes (ver aplicarEgresosCenso_).
+ *   `archive` del paciente, tomado de las secciones ALTAS y DEFUNCIONES de la hoja, via archive_set_egreso_si_vacio
+ *   (atomica: solo escribe si nadie lo eligio antes; ver aplicarEgresosCenso_). Y (25 nov 2026, v2) la seccion
+ *   PROCEDIMIENTOS de la hoja en la tabla censo_procedimientos, para el seguimiento de los operados (ver
+ *   guardarProcedimientosCenso_). Ninguna de las dos cambia que pacientes se sincronizan.
  *
  * SEGURIDAD: la SERVICE KEY de Supabase vive SOLO en Script Properties (clave SUPABASE_KEY),
  *   nunca en la hoja ni en el repo. El censo (PHI) viaja de este script a Supabase autenticado por
@@ -31,7 +33,7 @@
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
 // pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
 // Cambiarla en cada cambio del archivo.
-var CENSO_SYNC_VERSION = '2026.11.25';
+var CENSO_SYNC_VERSION = '2026.11.25-2';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
@@ -143,6 +145,8 @@ function doSync(opts) {
   Logger.log('Sync OK: ' + dd.rows.length + ' capturados, ' + _censoWriteStats_.upserts + ' upserts, ' + _censoWriteStats_.unchanged + ' sin cambios, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
   // 3) Motivo del egreso desde las secciones ALTAS / DEFUNCIONES de la hoja (25 nov 2026). Nunca rompe el sync.
   aplicarEgresosCenso_(key, parsed._egresos, parsed);
+  // 4) Sección PROCEDIMIENTOS → censo_procedimientos (25 nov 2026, v2). Nunca rompe el sync.
+  guardarProcedimientosCenso_(key, parsed._procedimientos, parsed._fechaCenso, parsed._fechaCensoRespaldo);
   reportarVersion_(key, 'censo-sync', CENSO_SYNC_VERSION);
   return { capturados: dd.rows.length, upserts: _censoWriteStats_.upserts, sin_cambios: _censoWriteStats_.unchanged, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
@@ -242,6 +246,15 @@ function parseCenso_(rows) {
   var out = [], section = 'PISO';   // primer bloque es PISO (implicito)
   var egresos = [];                 // filas de ALTAS / DEFUNCIONES (ver egresoTipoSeccion_)
   Object.defineProperty(out, '_egresos', { value: egresos });   // no enumerable: la lista de pacientes no cambia
+  // Sección PROCEDIMIENTOS (25 nov 2026, v2): las cirugías y procedimientos del día, para el seguimiento de los operados
+  // (guardarProcedimientosCenso_). Igual que _egresos: aparte y no enumerable, no se sincronizan a patients.
+  var procs = [];
+  Object.defineProperty(out, '_procedimientos', { value: procs });
+  // Fecha del censo (A2). 25 nov 2026 (revisión): si no se entiende se usa hoy, pero queda marcado (_fechaCensoRespaldo)
+  // para que guardarProcedimientosCenso_ no vuelva a insertar la lista de ayer con la fecha de hoy.
+  var fechaLeida = fechaCensoLeida_(rows, headerRow);
+  Object.defineProperty(out, '_fechaCenso', { value: fechaLeida || hoyScript_() });
+  Object.defineProperty(out, '_fechaCensoRespaldo', { value: !fechaLeida });
   var bg = rows._bg || null;        // colores de fondo (conColores_); sin ellos nadie sale marcado
   for (var i = headerRow + 1; i < rows.length; i++) {
     var row = rows[i];
@@ -264,6 +277,10 @@ function parseCenso_(rows) {
         // El tipo lo dan la sección Y la columna ESTADO (egresoTipoFila_); si se contradicen → 'duda' (no se aplica).
         var tipoEg = egresoTipoFila_(section, cell_(row, col.estado));
         if (tipoEg) egresos.push({ exp: exp, nombre: nombre, tipo: tipoEg });
+        if (/^PROCEDIMIENTO/.test(norm_(section))) {
+          procs.push({ cama: cell_(row, col.cama), exp: exp, nombre: nombre, edad: cell_(row, col.edad), dx: cell_(row, col.dx),
+            esp: cell_(row, col.esp), adscrito: cell_(row, col.adscrito), residente: cell_(row, col.residente) });
+        }
         continue;
       }
       // Sala de otro servicio (gine/onco/hemato): solo NUESTROS pacientes quirúrgicos.
@@ -292,6 +309,10 @@ function parseCenso_(rows) {
       // DES-excluir una seccion ya excluida (si cae tras ALTAS/DEFUNCIONES) -> fuga de un egreso
       // al censo activo. La identidad de seccion la dan los nombres reales (ALTAS, UCIA, ...).
       if (nonEmpty.length >= 1 && nonEmpty.length <= 2 && !looksLikeCama_(nonEmpty[0])) section = norm_(nonEmpty[0]);
+      // 25 nov 2026 (revisión): un encabezado administrativo con contador o fecha al lado («INGRESOS | 5 | 25/11/2026»,
+      // 3+ celdas) cierra la sección PROCEDIMIENTOS; antes sus pacientes entraban como operados. Solo al salir de
+      // PROCEDIMIENTOS y solo hacia otra sección administrativa: los pacientes sincronizados no cambian.
+      else if (nonEmpty.length >= 3 && /^PROCEDIMIENTO/.test(norm_(section)) && encabezadoConNotas_(nonEmpty)) section = norm_(nonEmpty[0]);
     }
   }
   // Si más de la mitad de los pacientes sale «azul» no son ingresos: es el diseño de la hoja (bandas de color, una
@@ -317,6 +338,20 @@ function looksLikeHeader_(row) {
     if (hits >= 2) return true;
   }
   return false;
+}
+
+// ¿Fila con 3+ celdas que es un encabezado de sección administrativa con anotaciones? La 1a celda EMPIEZA con el
+// nombre de la sección (ALTAS, DEFUNCIONES, EGRESOS, INGRESOS, MOVIMIENTOS, TPN) y las demás son notas cortas
+// (números, fechas o a lo más una palabra: «5», «25/11/2026», «TOTAL: 5»), no un nombre ni un diagnóstico. 25 nov 2026.
+var SECCION_ADMIN_INICIO_RE = /^(ALTAS?\b|DEFUNCION|EGRESOS?\b|INGRESOS|MOVIMIENTO|TPN\b)/;
+function encabezadoConNotas_(celdas) {
+  var primera = norm_(celdas[0]);
+  if (primera.length > 40 || !SECCION_ADMIN_INICIO_RE.test(primera) || !sectionExcludedAlways_(primera)) return false;
+  for (var i = 1; i < celdas.length; i++) {
+    var c = norm_(celdas[i]);
+    if (c.length > 20 || (c.match(/[A-Z]{2,}/g) || []).length > 1) return false;
+  }
+  return true;
 }
 
 // ¿El texto parece una CAMA (no un encabezado de seccion)? Camas: "3-181", "2-026", "UCI 3",
@@ -1416,7 +1451,8 @@ function logQuarantine_(key, rows) {
 // y el registro de pacientes no puede calcular mortalidad. La hoja SÍ lo dice: sus secciones ALTAS y DEFUNCIONES traen
 // la fila completa del paciente (parseCenso_ → out._egresos; el tipo sale de la sección Y de la columna ESTADO, ver
 // egresoTipoFila_). Por cada una se busca la copia del paciente en archive y, si aún no tiene motivo, se registra con
-// archive_set_egreso (la misma función que usa la app) con p_por «Censo (hoja · ALTAS|DEFUNCIONES)».
+// archive_set_egreso_si_vacio (25 nov 2026, v2: atómica, solo escribe si _egreso_tipo sigue vacío; 'ya-tenia' = lo eligió
+// alguien entre el GET y la llamada → se da por resuelto sin pisarlo) con p_por «Censo (hoja · ALTAS|DEFUNCIONES)».
 //   · La copia es la MÁS RECIENTE del expediente (de los últimos 15 días), archivada no antes de 48 h de que la hoja
 //     lo pusiera ahí ni antes de la última vez que se vio al paciente en el censo activo o en el tablero, y del MISMO
 //     paciente (namesCompatible_ con el nombre de la fila). Si la más reciente no cumple, no se aplica (no se busca
@@ -1480,6 +1516,14 @@ function egresoUrlArchive_(exp, desdeIso) {
   var q = [['select', 'id,archived_at,tipo:note_data->>_egreso_tipo,exp:patient_data->>exp,nombre:patient_data->>nombre'],
     ['patient_data->>exp', 'eq.' + exp], ['archived_at', 'gte.' + desdeIso], ['order', 'archived_at.desc']];
   return SUPABASE_URL + '/rest/v1/archive?' + q.map(function (kv) { return encodeURIComponent(kv[0]) + '=' + encodeURIComponent(kv[1]); }).join('&');
+}
+// Respuesta de archive_set_egreso_si_vacio ('ok' | 'ya-tenia' | 'no-encontrado'): PostgREST la manda como texto JSON
+// ("ok"); se acepta también sin comillas. '' si no se entiende.
+function egresoRespuestaRpc_(txt) {
+  var t = String(txt == null ? '' : txt).trim();
+  try { var v = JSON.parse(t); if (typeof v === 'string') t = v; } catch (_) { /* texto plano */ }
+  t = String(t).trim();
+  return /^(ok|ya-tenia|no-encontrado)$/.test(t) ? t : '';
 }
 function egresoFetch_(key, url, opts) {
   opts = opts || {};
@@ -1578,12 +1622,15 @@ function aplicarEgresosCenso_(key, egresos, activos) {
         continue;
       }
       st.peticiones++;
-      var rr = egresoFetch_(key, SUPABASE_URL + '/rest/v1/rpc/archive_set_egreso', {
+      // Atómica (25 nov 2026, v2): la base solo escribe si _egreso_tipo sigue vacío. Si alguien lo eligió en la app
+      // entre el GET y esta llamada, responde 'ya-tenia' y no se pisa (ni se reintenta).
+      var rr = egresoFetch_(key, SUPABASE_URL + '/rest/v1/rpc/archive_set_egreso_si_vacio', {
         method: 'post',
         payload: { p_id: copia.id, p_tipo: p.tipo, p_por: p.tipo === 'defuncion' ? 'Censo (hoja · DEFUNCIONES)' : 'Censo (hoja · ALTAS)' }
       });
-      var rc = rr.getResponseCode();
-      if (rc >= 200 && rc < 300 && !/no-encontrado/.test(rr.getContentText() || '')) { st.aplicados++; resolver(exp, p); }
+      var rc = rr.getResponseCode(), rTxt = egresoRespuestaRpc_(rr.getContentText());
+      if (rc >= 200 && rc < 300 && rTxt === 'ok') { st.aplicados++; resolver(exp, p); }
+      else if (rc >= 200 && rc < 300 && rTxt === 'ya-tenia') { st.ya_tenian++; resolver(exp, p); }
       else st.errores++;
     }
 
@@ -1601,6 +1648,144 @@ function aplicarEgresosCenso_(key, egresos, activos) {
     return st;
   } catch (e) {
     Logger.log('Egresos del censo: error (' + (e && e.name ? e.name : 'Error') + '); se reintenta en la próxima corrida. Conteos: ' + st.aplicados + ' aplicados, ' + st.peticiones + ' peticiones.');
+    return null;
+  }
+}
+
+// --- PROCEDIMIENTOS DEL CENSO (seguimiento de operados) ------------------------------------------
+// 25 nov 2026 (v2). «En procedimientos se centra el total de cirugías que se realizan, al menos de cirugía general; que
+// lo registre, nos servirá para conservar a esos pacientes como seguimiento». La sección PROCEDIMIENTOS de la hoja (cama
+// «3-152», «EXT» = ambulatorio, «QX», «UCIP»…) se guarda en public.censo_procedimientos, una fila por fecha + expediente +
+// nombre normalizado (el mismo expediente con dos nombres son dos filas). Google no guarda los censos viejos: solo hay
+// datos desde que corre esta versión. El registro de pacientes (registro-pacientes.gs) los copia a su hoja.
+//   · Fecha: la del censo (celda A2, fechaCenso_); si no se entiende, hoy en la zona del script. 25 nov 2026 (revisión):
+//     A2 se lee también como «25/11/26», «25-11-2026», «25.11.2026», «MIÉRCOLES 25/11/2026» o «25 DE NOVIEMBRE DE 2026».
+//     Con la fecha de respaldo (hoy) no se vuelve a escribir la lista del día anterior si es idéntica (la hoja no se
+//     tocó): así no se duplican los procedimientos con otra fecha; y el log lo dice.
+//   · UPSERT on_conflict=fecha,exp,nombre_norm sin visto_primero (lo pone la base al insertar y se conserva) y con
+//     visto_ultimo = ahora.
+//   · Para no escribir lo mismo cada 5 min: huella de la lista del día en la Script Property PL_PROC_CENSO
+//     ({f: fecha, h: huella, t: ms}); se escribe si cambió o si pasaron PROC_REESCRIBIR_MIN (así visto_ultimo se
+//     mantiene al día). Al cambiar la fecha se limpia. Tope de PROC_MAX_FILAS por corrida.
+//   · Nunca lanza; el log solo lleva conteos.
+var PROC_PROP = 'PL_PROC_CENSO';
+var PROC_REESCRIBIR_MIN = 60;
+var PROC_MAX_FILAS = 80;
+
+// Hoy (AAAA-MM-DD) en la zona del script; si no se puede, en UTC.
+function hoyScript_() {
+  try {
+    var tz = (typeof Session !== 'undefined' && Session.getScriptTimeZone && Session.getScriptTimeZone()) || 'America/Mexico_City';
+    var f = validISODate_(String(Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')));
+    if (f) return f;
+  } catch (_) { /* sin Utilities/Session */ }
+  return new Date().toISOString().slice(0, 10);
+}
+// Fecha del censo: la celda A2 (en la hoja es la fila de encabezados, columna A) o, si no, la columna A de la fila de
+// encabezados. Acepta Date o texto (fechaDeTextoCenso_). Si no hay fecha válida, hoy (hoyScript_).
+function fechaCenso_(rows, headerRow) {
+  return fechaCensoLeida_(rows, headerRow) || hoyScript_();
+}
+// Igual que fechaCenso_ pero '' si A2 no trae una fecha que se entienda (sin respaldo).
+function fechaCensoLeida_(rows, headerRow) {
+  var cands = [rows && rows[1] ? rows[1][0] : null];
+  if (headerRow != null && headerRow !== 1 && rows && rows[headerRow]) cands.push(rows[headerRow][0]);
+  for (var i = 0; i < cands.length; i++) {
+    var v = cands[i], f = '';
+    if (v == null || v === '') continue;
+    try {
+      if (Object.prototype.toString.call(v) === '[object Date]') f = isNaN(v.getTime()) ? '' : validISODate_(String(toISODate_(v)));
+      else f = fechaDeTextoCenso_(v);
+    } catch (_) { f = ''; }
+    if (f) return f;
+  }
+  return '';
+}
+// Fecha escrita en una celda → AAAA-MM-DD, o '' si no se entiende o es imposible (31/02). 25 nov 2026 (revisión): antes
+// solo «AAAA-MM-DD» o «D/M/AAAA» exactos; ahora también año de 2 cifras, guion o punto, texto alrededor («MIÉRCOLES
+// 25/11/2026») y el mes con letra («25 DE NOVIEMBRE DE 2026», «25-NOV-2026»).
+var MESES_CENSO_ = { ENE: 1, FEB: 2, MAR: 3, ABR: 4, MAY: 5, JUN: 6, JUL: 7, AGO: 8, SEP: 9, SET: 9, OCT: 10, NOV: 11, DIC: 12 };
+function fechaDeTextoCenso_(v) {
+  var s = norm_(v);
+  if (!s) return '';
+  var iso = s.match(/(?:^|\D)(\d{4})-(\d{2})-(\d{2})(?!\d)/);
+  if (iso) return validISODate_(iso[1] + '-' + iso[2] + '-' + iso[3]);
+  var m = s.match(/(?:^|\D)(\d{1,2}) ?[\/\-.] ?(\d{1,2}) ?[\/\-.] ?(\d{4}|\d{2})(?!\d)/);
+  if (m) return toISODate_(m[1] + '/' + m[2] + '/' + m[3]);
+  var t = s.match(/(?:^|\D)(\d{1,2})(?: DE | ?[\/\-.] ?| )([A-Z]{3,})\.?(?: DE(?:L)? | ?[\/\-.] ?| )(\d{4})(?!\d)/);
+  if (t && MESES_CENSO_[t[2].slice(0, 3)]) return toISODate_(t[1] + '/' + MESES_CENSO_[t[2].slice(0, 3)] + '/' + t[3]);
+  return '';
+}
+// Huella corta (32 bits, base 36) de un texto.
+function procHuella_(txt) {
+  var h = 5381, t = String(txt || '');
+  for (var i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+// Filas para censo_procedimientos: con expediente válido y nombre, una por (exp, nombre_norm) (gana la última de la
+// hoja: un upsert con la misma llave dos veces falla entero), como mucho PROC_MAX_FILAS.
+function procFilas_(procs, fecha) {
+  var porLlave = {}, orden = [];
+  (procs || []).forEach(function (p) {
+    var exp = String(p && p.exp || '').trim(), nombre = String(p && p.nombre || '').trim();
+    if (!exp || !nombre || !expLooksValid_(exp)) return;
+    var nn = norm_(nombre), k = exp + '|' + nn;
+    if (!porLlave[k]) orden.push(k);
+    porLlave[k] = { fecha: fecha, cama: String(p.cama || '').trim(), exp: exp, nombre: nombre, nombre_norm: nn, edad: String(p.edad == null ? '' : p.edad).trim(),
+      dx: String(p.dx || '').trim(), esp: String(p.esp || '').trim(), adscrito: String(p.adscrito || '').trim(), residente: String(p.residente || '').trim() };
+  });
+  return orden.slice(0, PROC_MAX_FILAS).map(function (k) { return porLlave[k]; });
+}
+
+/**
+ * Guarda la sección PROCEDIMIENTOS del censo en censo_procedimientos (ver arriba). procs: parseCenso_ → _procedimientos;
+ * fecha: parseCenso_ → _fechaCenso (AAAA-MM-DD); respaldo: parseCenso_ → _fechaCensoRespaldo (true = A2 no se entendió y
+ * la fecha es la de hoy). Nunca lanza. Devuelve {filas, escritas, omitida, error} o null si falló.
+ */
+function guardarProcedimientosCenso_(key, procs, fecha, respaldo) {
+  var st = { filas: 0, escritas: 0, omitida: false, error: false };
+  try {
+    fecha = validISODate_(String(fecha || '')) || hoyScript_();
+    var filas = procFilas_(procs, fecha);
+    st.filas = filas.length;
+    var ps = PropertiesService.getScriptProperties();
+    var prev = null;
+    try { prev = JSON.parse(ps.getProperty(PROC_PROP) || 'null'); } catch (_) { prev = null; }
+    // Huella de la lista sin la fecha (l): con la fecha de respaldo, la misma lista de otro día es la de ayer sin tocar.
+    var lista = filas.map(function (r) {
+      return [r.cama, r.exp, r.nombre_norm, r.edad, r.dx, r.esp, r.adscrito, r.residente].join('\t');
+    }).sort().join('\n');
+    var huellaLista = procHuella_(lista);
+    if (respaldo && filas.length && prev && prev.f !== fecha && prev.l === huellaLista) {
+      st.omitida = true;
+      Logger.log('Procedimientos del censo: A2 no trae una fecha que se entienda y la lista es la misma del día anterior; no se vuelve a guardar.');
+      return st;
+    }
+    if (prev && prev.f !== fecha) { ps.deleteProperty(PROC_PROP); prev = null; }            // otro día: se limpia
+    if (!filas.length) return st;
+    var huella = procHuella_(fecha + '\n' + lista);
+    var now = Date.now();
+    if (prev && prev.h === huella && now - (+prev.t || 0) < PROC_REESCRIBIR_MIN * 60000) { st.omitida = true; return st; }
+    var ahora = new Date(now).toISOString();
+    var body = filas.map(function (r) { var o = {}; for (var k in r) o[k] = r[k]; o.visto_ultimo = ahora; return o; });
+    var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/censo_procedimientos?on_conflict=fecha,exp,nombre_norm', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      payload: JSON.stringify(body)
+    });
+    var code = res.getResponseCode();
+    if (code < 200 || code >= 300) {
+      st.error = true;
+      Logger.log('Procedimientos del censo: HTTP ' + code + ' al guardar ' + filas.length + ' filas; se reintenta en la próxima corrida.');
+      return st;
+    }
+    st.escritas = filas.length;
+    ps.setProperty(PROC_PROP, JSON.stringify({ f: fecha, h: huella, l: huellaLista, t: now }));
+    Logger.log('Procedimientos del censo: ' + filas.length + ' filas guardadas' + ((procs || []).length > PROC_MAX_FILAS ? ' (tope de ' + PROC_MAX_FILAS + ')' : '')
+      + (respaldo ? ' con la fecha de hoy (A2 no trae una fecha que se entienda)' : '') + '.');
+    return st;
+  } catch (e) {
+    Logger.log('Procedimientos del censo: error (' + (e && e.name ? e.name : 'Error') + '); se reintenta en la próxima corrida.');
     return null;
   }
 }

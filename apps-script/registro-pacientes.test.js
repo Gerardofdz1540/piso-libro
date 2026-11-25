@@ -2692,9 +2692,9 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
     JSON.stringify(fl.map((x) => x[2])) === JSON.stringify([4, 1, 0, 0, 1, 2, 1, 0, 1, 1, 1]) && fl[0][1] === "Episodios en el registro" && /^Episodios analizables/.test(fl[5][1]) && morK && morK["Denominador"] === fl[5][2] && fl.every((x, i) => x[0] === i + 1) && new Set(anK[AFL].map((x) => x["Paso"])).size === fl.length,
     JSON.stringify(fl));
   const rk = anK["Resumen mensual"].find((x) => x["Mes"] === "2026-11");
-  check("C25d Resumen mensual: «Egresos con motivo (%)» = 50 (1 de 2 egresos de noviembre), «Con sexo (%)» = 50 (1 de 2 ingresos) y «Episodios sin labs (n)» = 2; las tres van al final de la pestaña",
-    rk && rk["Egresos con motivo (%)"] === 50 && rk["Con sexo (%)"] === 50 && rk["Episodios sin labs (n)"] === 2 && JSON.stringify(sb.REG_RESUMEN_COLUMNAS.slice(-3)) === JSON.stringify(["Egresos con motivo (%)", "Con sexo (%)", "Episodios sin labs (n)"])
-    && sb.REG_RESUMEN_COLUMNAS.indexOf("Ingresos sin talla (n)") === sb.REG_RESUMEN_COLUMNAS.length - 4, JSON.stringify(rk));
+  check("C25d Resumen mensual: «Egresos con motivo (%)» = 50 (1 de 2 egresos de noviembre), «Con sexo (%)» = 50 (1 de 2 ingresos) y «Episodios sin labs (n)» = 2; las tres van al final de la pestaña (25 nov 2026: antes de las tres de procedimientos del censo)",
+    rk && rk["Egresos con motivo (%)"] === 50 && rk["Con sexo (%)"] === 50 && rk["Episodios sin labs (n)"] === 2 && JSON.stringify(sb.REG_RESUMEN_COLUMNAS.slice(-6, -3)) === JSON.stringify(["Egresos con motivo (%)", "Con sexo (%)", "Episodios sin labs (n)"])
+    && sb.REG_RESUMEN_COLUMNAS.indexOf("Ingresos sin talla (n)") === sb.REG_RESUMEN_COLUMNAS.length - 7, JSON.stringify(rk));
   const varsT = sb.regVariables_().slice(1);
   check("C25e el Diccionario de variables tiene las secciones «Sesgos y limitaciones» y «No disponible en esta fuente» (ASA, clase de herida, profilaxis, seguimiento a 30 días…)",
     varsT.filter((v) => v[0] === "Sesgos y limitaciones").length >= 5 && varsT.filter((v) => v[0] === "No disponible en esta fuente").length >= 6 && varsT.some((v) => v[0] === "No disponible en esta fuente" && /ASA/.test(v[1])));
@@ -2781,7 +2781,7 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
   const colsE = sb.REG_ANALISIS[0].columnas, nombres = sb.REG_ANALISIS.map((c) => c.nombre);
   check("C23i las 15 columnas nuevas de Episodios van al final (después de «Riesgo preoperatorio simple (0-6)») y las 5 pestañas nuevas van después de «Análisis · Cirugías», en este orden",
     JSON.stringify(colsE.slice(-15)) === JSON.stringify(sb.REG_EP_APOYO.concat(sb.REG_EP_EVENTOS)) && colsE[colsE.length - 16] === "Riesgo preoperatorio simple (0-6)" && sb.REG_EP_LOTE_C2.length === 15
-    && JSON.stringify(nombres.slice(nombres.indexOf(AQ))) === JSON.stringify([AQ, AEV, AAB, ACO, AFL, AIN]), JSON.stringify(nombres));
+    && JSON.stringify(nombres.slice(nombres.indexOf(AQ))) === JSON.stringify([AQ, AEV, AAB, ACO, AFL, AIN, "Seguimiento de operados"]), JSON.stringify(nombres));   // 25 nov 2026: + seguimiento de operados al final
   const sinDef = [];
   sb.REG_EP_LOTE_C2.forEach((c) => { const v = varsT.find((r) => r[0] === AN[0] && r[1].split(" · ").indexOf(c) !== -1); if (!v || !/Sesgo/.test(v[4])) sinDef.push(c); });
   [AEV, AAB, ACO, AFL, AIN].forEach((n) => sb.REG_ANALISIS.find((c) => c.nombre === n).columnas.forEach((c) => { if (!varsT.some((r) => (r[0] === n || r[0] === "Todas") && r[1].split(" · ").indexOf(c) !== -1)) sinDef.push(n + "/" + c); }));
@@ -3276,6 +3276,222 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
   const R = tab(st.ss, "Resumen mensual").find((x) => x["Mes"] === "2026-11") || {};
   check("N3c Resumen mensual: los tres egresos tienen motivo (100 %) y la defunción del censo cuenta (1 de 3)",
     R["Egresos con motivo (%)"] === 100 && R["Defunciones (n)"] === 1 && R["Egresos con desenlace conocido (n)"] === 3, JSON.stringify(R));
+}
+
+// ─── P: procedimientos del censo y seguimiento de operados (25 nov 2026, registro 2026.11.26-2) ─────────────────────
+{
+  const PCZ = "Procedimientos del censo", SG = "Seguimiento de operados";
+  const proc = (id, fecha, cama, exp, nombre, esp, dx, visto) => ({ id, fecha, cama, exp, nombre, nombre_norm: nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(),
+    edad: "45", dx: dx || "DX FICTICIO", esp, adscrito: "ADSC FICTICIO", residente: "RES FICTICIO", visto_primero: (visto || fecha + "T14:00:00+00:00"), visto_ultimo: (visto || fecha + "T15:00:00+00:00") });
+  const base = () => {
+    const d = VACIO();
+    d.patients = [
+      { id: "h1", cama: "3-152", nombre: "PEREZ FICTICIO JUAN", exp: "000881", dx: "COLECISTITIS FICTICIA", edad: "45", esp: "CG", ingreso: "2026-11-20", estado: "ESTABLE" },
+      { id: "r1", cama: "3-160", nombre: "MARIA LOPEZ FICTICIA", exp: "000882", dx: "ERGE COMPLICADA FICTICIA", edad: "38", esp: "CG", ingreso: "2026-11-26", estado: "ESTABLE" },
+      { id: "h2", cama: "3-161", nombre: "VEGA FICTICIO SIN CIRUGIA", exp: "000885", dx: "PANCREATITIS FICTICIA", edad: "50", esp: "CG", ingreso: "2026-11-22", estado: "ESTABLE" }
+    ];
+    d.notes = [{ patient_id: "h1", checklist: { sexo: "M", cirugias: [{ id: "cx1", fecha: "2026-11-24", procedimiento: "COLECISTECTOMIA LAPAROSCOPICA" }] } }];
+    d.archive = [
+      egresado("ka", "e1", "MARIA LOPEZ FICTICIA", "000882", "2026-11-10", "2026-11-15", {}, { _egreso_tipo: "alta", _egreso_tipo_por: "R1 FICTICIO", _egreso_tipo_ts: "2026-11-15T18:00:00Z" }),
+      egresado("kb", "e2", "SOTO FICTICIO LUIS", "000884", "2026-10-28", "2026-11-06", {}, { checklist: { cirugias: [{ fecha: "2026-11-05", procedimiento: "APENDICECTOMIA" }] } })
+    ];
+    d.censo_procedimientos = [
+      proc(1, "2026-11-25", "3-152", "000881", "PÉREZ  FICTICIO JUAN", "CG", "PO COLECISTECTOMIA FICTICIA"),
+      proc(2, "2026-11-25", "EXT", "000882", "MARIA LOPEZ FICTICIA", "ENDOSCO", "ERGE FICTICIA"),
+      proc(3, "2026-11-26", "QX", "000883", "PEDRO RUIZ FICTICIO", "CCR", "HEMORROIDES FICTICIAS"),   // 25 nov 2026 (revisión): misma «última vez» que la otra fila del 26 (el censo reescribe juntas las del día)
+      proc(4, "2026-11-25", "UCIP", "000881", "GARCIA FICTICIA ROSA", "CT", "DX FICTICIO"),
+      proc(5, "2026-11-26", "EXT", "000881", "PEREZ FICTICIO JUAN", "CG", "DX FICTICIO")
+    ];
+    return d;
+  };
+  const st = { db: base(), hoy: "2026-11-28" };
+  const m = makeSandbox(st), r = m.sb.actualizarRegistro();
+  const lect = m.calls.filter((c) => /\/rest\/v1\/censo_procedimientos\?/.test(c.u));
+  check("P1 lee censo_procedimientos dentro de opcional(), por cursor (visto_ultimo, id) con las columnas pedidas, y guarda el cursor",
+    r.ok && lect.length >= 1 && /select=id,fecha,cama,exp,nombre,edad,dx,esp,adscrito,residente,visto_primero,visto_ultimo(&|$)/.test(lect[0].u) && /order=visto_ultimo\.asc,id\.asc/.test(lect[0].u) && /visto_ultimo=not\.is\.null/.test(lect[0].u)
+    && Date.parse(st.props.REG_CURSOR_censo_procedimientos) === Date.parse("2026-11-26T15:00:00+00:00") && m.sb.REG_CURSORES.censo_procedimientos.col === "visto_ultimo" && !m.sb.REG_CURSORES.censo_procedimientos.margenMs,
+    JSON.stringify({ u: lect.map((c) => c.u), cur: st.props.REG_CURSOR_censo_procedimientos }));
+  const T = Object.fromEntries(tab(st.ss, PCZ).map((x) => [x["ID"], x]));
+  const nombresPest = m.sb.REG_PESTANAS.map((c) => c.nombre);
+  check("P2 pestaña cruda «Procedimientos del censo» junto a las demás crudas (después de «Procedimientos programados»), modo acumula, clave ID, con nombres y las columnas pedidas",
+    nombresPest.indexOf(PCZ) === nombresPest.indexOf("Procedimientos programados") + 1 && JSON.stringify(st.ss.sheets[PCZ].cells[0]) === JSON.stringify(["ID", "Fecha", "Cama", "Expediente", "Nombre", "Edad", "Diagnóstico", "Especialidad", "Adscrito", "Residente", "Visto primero", "Visto por última vez", "ID episodio", "Ambulatorio", "Grupo", "Vigente"])
+    && m.sb.REG_PESTANAS.find((c) => c.nombre === PCZ).modo === "acumula" && JSON.stringify(m.sb.REG_PESTANAS.find((c) => c.nombre === PCZ).clave) === '["ID"]' && Object.keys(T).length === 5
+    && T["1"]["Nombre"] === "PÉREZ  FICTICIO JUAN" && T["1"]["Visto primero"] === "2026-11-25T14:00:00+00:00" && T["3"]["Visto por última vez"] === "2026-11-26T15:00:00+00:00" && T["2"]["Especialidad"] === "ENDOSCO",
+    JSON.stringify(st.ss.sheets[PCZ].cells.slice(0, 2)));
+  check("P3 ID episodio = el episodio con ese expediente y nombre compatible cuya estancia cubre la fecha; Ambulatorio = Sí si cama EXT o sin episodio; Grupo del diagnóstico",
+    T["1"]["ID episodio"] === "h1" && T["1"]["Ambulatorio"] === "No" && T["1"]["Grupo"] === "Colecistectomía"
+    && T["2"]["ID episodio"] === "" && T["2"]["Ambulatorio"] === "Sí"            // egresó el 15 y reingresó el 26: el 25 no lo cubre ninguno
+    && T["3"]["ID episodio"] === "" && T["3"]["Ambulatorio"] === "Sí"            // sin episodio en el registro
+    && T["4"]["ID episodio"] === "" && T["4"]["Ambulatorio"] === "Sí"            // mismo expediente, otra persona: no se liga a h1
+    && T["5"]["ID episodio"] === "h1" && T["5"]["Ambulatorio"] === "Sí" && T["5"]["Grupo"] === "" && Object.values(T).every((x) => x["Vigente"] === "Sí"),
+    JSON.stringify(Object.values(T).map((x) => [x["ID"], x["ID episodio"], x["Ambulatorio"], x["Grupo"]])));
+  const S = tab(st.ss, SG), sg = (n) => S.find((x) => new RegExp(n).test(x["Nombre"])) || {};
+  check("P4 «Seguimiento de operados»: una fila por persona con procedimientos en el censo o cirugías en el registro (4 + la de solo cirugía); el mismo expediente con otro nombre es otra fila; sin cirugía ni procedimiento no entra",
+    S.length === 5 && !!sg("JUAN")["Expediente"] && !!sg("ROSA")["Expediente"] && sg("ROSA")["Expediente"] === "000881" && sg("JUAN")["Expediente"] === "000881" && !S.some((x) => /SIN CIRUGIA/.test(x["Nombre"]))
+    && JSON.stringify(st.ss.sheets[SG].cells[0]) === JSON.stringify(m.sb.REG_SEGUIMIENTO_COLUMNAS), JSON.stringify(S.map((x) => [x["Expediente"], x["Nombre"]])));
+  const J = sg("JUAN"), M = sg("MARIA"), PE = sg("PEDRO"), L = sg("LUIS");
+  check("P5 hospitalizado operado (JUAN): primer = cirugía del registro (24), último = procedimiento del censo (26), 2 días en el censo, 1 cirugía, ID episodios h1, hospitalizado, sexo de la tarjeta, 2 días desde el último",
+    J["Primer procedimiento"] === "2026-11-24" && J["Último procedimiento"] === "2026-11-26" && J["Procedimientos en el censo (n)"] === 2 && J["Cirugías registradas (n)"] === 1 && J["ID episodios"] === "h1"
+    && J["¿Hospitalizado ahora?"] === "Sí" && J["Sexo"] === "M" && J["Sexo (fuente)"] === "Tarjeta" && J["Días desde el último procedimiento"] === 2 && J["Reingresos posteriores (n)"] === 0 && J["Especialidades"] === "CG"
+    && J["Último egreso"] === "" && J["Vigente"] === "Sí", JSON.stringify(J));
+  check("P6 ambulatoria que reingresó (MARIA): ID episodios e1, r1; último egreso el 15 (Alta); 1 reingreso posterior al procedimiento; especialidades del censo y del registro; nombre y dx del más reciente; sexo inferido del nombre",
+    M["ID episodios"] === "e1, r1" && M["Último egreso"] === "2026-11-15" && M["Motivo del último egreso"] === "Alta" && M["Reingresos posteriores (n)"] === 1 && M["¿Hospitalizado ahora?"] === "Sí"
+    && M["Especialidades"] === "ENDOSCO · CG" && M["Diagnóstico más reciente"] === "ERGE COMPLICADA FICTICIA" && M["Edad"] === "38" && M["Sexo"] === "F" && M["Sexo (fuente)"] === "Inferido del nombre"
+    && M["Procedimientos en el censo (n)"] === 1 && M["Cirugías registradas (n)"] === 0, JSON.stringify(M));
+  check("P7 solo en el censo (PEDRO, QX): sin episodios, no hospitalizado, sexo inferido; solo en el registro (LUIS): 0 en el censo, 1 cirugía, egreso con motivo no registrado",
+    PE["ID episodios"] === "" && PE["¿Hospitalizado ahora?"] === "No" && PE["Sexo"] === "M" && PE["Sexo (fuente)"] === "Inferido del nombre" && PE["Especialidades"] === "CCR" && PE["Reingresos posteriores (n)"] === 0 && PE["Edad"] === "45"
+    && L["Procedimientos en el censo (n)"] === 0 && L["Cirugías registradas (n)"] === 1 && L["Primer procedimiento"] === "2026-11-05" && L["Último egreso"] === "2026-11-06" && L["Motivo del último egreso"] === "Motivo no registrado",
+    JSON.stringify([PE, L]));
+  check("P8 ordenada por último procedimiento (el más reciente arriba)",
+    JSON.stringify(S.map((x) => x["Último procedimiento"])) === JSON.stringify(S.map((x) => x["Último procedimiento"]).slice().sort().reverse()) && S[0]["Último procedimiento"] === "2026-11-26" && S[S.length - 1]["Nombre"] === "SOTO FICTICIO LUIS",
+    JSON.stringify(S.map((x) => [x["Último procedimiento"], x["Nombre"]])));
+  const R = Object.fromEntries(tab(st.ss, "Resumen mensual").map((x) => [x["Mes"], x]));
+  const colsR = st.ss.sheets["Resumen mensual"].cells[0];
+  check("P9 Resumen mensual: «Procedimientos en el censo (n)» 5, «… de CG (n)» 2 y «Ambulatorios (n)» 4 en 2026-11 (mes de la fecha); vacías en 2026-10 (antes de que existiera la captura); van al final",
+    R["2026-11"]["Procedimientos en el censo (n)"] === 5 && R["2026-11"]["Procedimientos en el censo de CG (n)"] === 2 && R["2026-11"]["Ambulatorios (n)"] === 4
+    && R["2026-10"] && R["2026-10"]["Procedimientos en el censo (n)"] === "" && R["2026-10"]["Ambulatorios (n)"] === ""
+    && JSON.stringify(colsR.slice(-3)) === JSON.stringify(["Procedimientos en el censo (n)", "Procedimientos en el censo de CG (n)", "Ambulatorios (n)"]), JSON.stringify([R["2026-11"], R["2026-10"]]));
+  // Lo existente no cambia: «Análisis · Episodios» y las columnas viejas del Resumen son idénticas sin la tabla nueva.
+  const d0 = base(); delete d0.censo_procedimientos;
+  const st0 = { db: d0, hoy: "2026-11-28" }; makeSandbox(st0).sb.actualizarRegistro();
+  const viejas = (ss) => JSON.stringify(tab(ss, "Resumen mensual").map((x) => { const y = Object.assign({}, x); ["Procedimientos en el censo (n)", "Procedimientos en el censo de CG (n)", "Ambulatorios (n)"].forEach((c) => delete y[c]); return y; }));
+  check("P10 «Análisis · Episodios» y las columnas existentes del Resumen mensual no cambian por los procedimientos del censo",
+    JSON.stringify(tab(st.ss, AN[0])) === JSON.stringify(tab(st0.ss, AN[0])) && viejas(st.ss) === viejas(st0.ss) && JSON.stringify(st.ss.sheets[AN[0]].cells[0]) === JSON.stringify(st0.ss.sheets[AN[0]].cells[0]),
+    "");
+  const tA = JSON.stringify(Object.keys(st.ss.sheets).filter((n) => /^Análisis|Completitud|Resumen mensual|Indicadores|Flujo|Eventos/.test(n)).map((n) => st.ss.sheets[n].cells));
+  check("P11 las pestañas de análisis siguen sin nombres ni expedientes (los procedimientos del censo solo van con nombres a sus dos pestañas)", !/PEREZ|LOPEZ|RUIZ|GARCIA|SOTO|00088/.test(tA), (tA.match(/PEREZ|LOPEZ|RUIZ|GARCIA|SOTO|00088\d/) || [])[0]);
+  // Corrida siguiente: PEDRO se hospitaliza el 26; su procedimiento (fila 3, ya escrita) se liga al episodio nuevo. Una fila nueva del 27 llega por el cursor.
+  st.db.patients.push({ id: "q1", cama: "3-170", nombre: "PEDRO RUIZ FICTICIO", exp: "000883", dx: "HEMORROIDES FICTICIAS", edad: "45", esp: "CCR", ingreso: "2026-11-26", estado: "ESTABLE" });
+  st.db.censo_procedimientos.push(proc(6, "2026-11-27", "3-170", "000883", "PEDRO RUIZ FICTICIO", "CCR", "PO HEMORROIDECTOMIA FICTICIA"));
+  const m2 = makeSandbox(st); m2.sb.actualizarRegistro();
+  const lect2 = m2.calls.filter((c) => /\/rest\/v1\/censo_procedimientos\?/.test(c.u));
+  const T2 = Object.fromEntries(tab(st.ss, PCZ).map((x) => [x["ID"], x])), PE2 = tab(st.ss, SG).find((x) => /PEDRO/.test(x["Nombre"]) && x["Vigente"] === "Sí") || {};
+  check("P12 corrida siguiente: lee desde 2 días antes del cursor (sin volver a bajar la fila vieja); la fila nueva entra; la fila ya escrita se liga al episodio que apareció después (Ambulatorio pasa a No)",
+    lect2.length >= 1 && /visto_ultimo=gte\.2026-11-24T15:00:00/.test(lect2[0].u) && Object.keys(T2).length === 6 && T2["6"]["ID episodio"] === "q1" && T2["6"]["Grupo"] === "Anorrectal"
+    && T2["3"]["ID episodio"] === "q1" && T2["3"]["Ambulatorio"] === "No" && PE2["ID episodios"] === "q1" && PE2["Procedimientos en el censo (n)"] === 2 && PE2["¿Hospitalizado ahora?"] === "Sí",
+    JSON.stringify({ u: lect2.map((c) => c.u), t3: T2["3"], pe: PE2 }));
+  // La tabla falla: lo demás se escribe y su pestaña no se toca.
+  const st3 = { db: base(), hoy: "2026-11-28", falla: { censo_procedimientos: 503 } };
+  const r3 = makeSandbox(st3).sb.actualizarRegistro();
+  check("P13 si censo_procedimientos no se puede leer: la corrida termina, avisa sin datos del paciente, Pacientes se escribe y la pestaña nueva no se crea vacía ni avanza el cursor",
+    r3.ok && r3.avisos.some((a) => /No se pudo leer censo_procedimientos/.test(a)) && !r3.avisos.some((a) => /FICTICI/.test(a)) && tab(st3.ss, "Pacientes").length >= 4 && tab(st3.ss, PCZ).length === 0 && !st3.props.REG_CURSOR_censo_procedimientos,
+    JSON.stringify(r3.avisos));
+  // Unidades: CG, cobertura de la estancia y no ligar a una tarjeta duplicada.
+  const sb = m.sb;
+  const pe = sb.regPacientesPorExp_([
+    { "ID episodio": "x1", "Nombre": "ANA FICTICIA", "Expediente": "000-9001", "Estado en registro": "Egresado", "Fecha de ingreso": "2026-11-10", "Fecha de egreso": "2026-11-12", "Motivo de egreso": "ALTA" },
+    { "ID episodio": "x2", "Nombre": "ANA FICTICIA", "Expediente": "0009001", "Estado en registro": "Egresado", "Fecha de ingreso": "2026-11-12", "Fecha de egreso": "2026-11-14", "Motivo de egreso": "DUPLICADO" },
+    { "ID episodio": "x3", "Nombre": "ANA FICTICIA", "Expediente": "0009001", "Estado en registro": "Salió de la base sin egreso registrado", "Fecha de ingreso": "2026-11-20", "Última vez en la base": "2026-11-22" }]);
+  check("P14 regEpisodioDeProc_: cubre ingreso y egreso (inclusive), no la víspera; no liga a la tarjeta duplicada; «salió sin egreso» cubre hasta la última vez visto; regEsCg_",
+    sb.regEpisodioDeProc_(pe, "0009001", "ANA FICTICIA", "2026-11-12", "2026-11-28") === "x1" && sb.regEpisodioDeProc_(pe, "0009001", "ANA FICTICIA", "2026-11-09", "2026-11-28") === ""
+    && sb.regEpisodioDeProc_(pe, "0009001", "ANA FICTICIA", "2026-11-13", "2026-11-28") === "" && sb.regEpisodioDeProc_(pe, "0009001", "ANA FICTICIA", "2026-11-22", "2026-11-28") === "x3"
+    && sb.regEpisodioDeProc_(pe, "0009001", "ANA FICTICIA", "2026-11-23", "2026-11-28") === "" && sb.regEpisodioDeProc_(pe, "0009001", "ROSA FICTICIA", "2026-11-12", "2026-11-28") === ""
+    && sb.regEsCg_("CG") && sb.regEsCg_("cg/uro") && sb.regEsCg_("Cirugía General") && !sb.regEsCg_("CCR") && !sb.regEsCg_("ENDOSCO") && !sb.regEsCg_(""), "");
+  const vars = sb.regVariables_().slice(1), txt = JSON.stringify(vars), falta = [];
+  [PCZ].forEach((n) => sb.REG_PESTANAS.find((c) => c.nombre === n).columnas.forEach((c) => { if (!vars.some((v) => v[0] === n && v[1].split(" · ").indexOf(c) !== -1)) falta.push(n + "/" + c); }));
+  check("P15 Diccionario de variables: define las columnas de «Procedimientos del censo», dice que tienen nombres y que solo hay datos desde el 25 nov 2026 (Google no guarda censos viejos); versión 2026.11.26-2",
+    !falta.length && vars.some((v) => v[0] === SG && v[1] === "Privacidad" && /TIENE NOMBRES/.test(v[4])) && vars.some((v) => v[0] === PCZ && v[1] === "Privacidad" && /TIENE NOMBRES/.test(v[4]))
+    && /Solo hay datos desde el 25 nov 2026: Google no guarda los censos viejos/.test(txt) && sb.REGISTRO_VERSION === "2026.11.26-2"
+    && /Seguimiento de operados/.test(JSON.stringify(st.ss.sheets["Diccionario"].cells)), falta.join(" | "));
+}
+
+// ─── P (revisión, 25 nov 2026): filas corregidas o canceladas, cirugía la víspera del ingreso, clave estable,
+//     expediente no válido y «Días desde el último procedimiento» acotado. Datos FICTICIOS. ─────────────────────────
+{
+  const PCZ = "Procedimientos del censo", SG = "Seguimiento de operados";
+  const proc = (id, fecha, cama, exp, nombre, esp, dx, vp, vu) => ({ id, fecha, cama, exp, nombre, nombre_norm: nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim(),
+    edad: "45", dx: dx || "DX FICTICIO", esp, adscrito: "", residente: "", visto_primero: vp || fecha + "T14:00:00+00:00", visto_ultimo: vu || fecha + "T15:00:00+00:00" });
+  const mesR = (ss) => tab(ss, "Resumen mensual").find((x) => x["Mes"] === "2026-11") || {};
+  // 1) El mismo día: un nombre con error («JUA») y un expediente con guion se corrigen, y una fila se cancela. Las que
+  //    siguen en la hoja comparten la última escritura del día (26T03:00); las demás salieron antes.
+  {
+    const d = VACIO();
+    d.patients = [{ id: "h1", cama: "3-152", nombre: "PEREZ FICTICIO JUAN", exp: "000881", dx: "COLECISTITIS FICTICIA", edad: "45", esp: "CG", ingreso: "2026-11-20", estado: "ESTABLE" }];
+    d.notes = [{ patient_id: "h1", checklist: { sexo: "M" } }];
+    d.censo_procedimientos = [
+      proc(1, "2026-11-25", "3-152", "000881", "PEREZ FICTICIO JUA", "CG", "COLECISTITIS FICTICIA", "2026-11-25T14:00:00+00:00", "2026-11-25T14:05:00+00:00"),
+      proc(2, "2026-11-25", "3-152", "000881", "PEREZ FICTICIO JUAN", "CG", "COLECISTITIS FICTICIA", "2026-11-25T14:10:00+00:00", "2026-11-26T03:00:00.123456+00:00"),
+      proc(3, "2026-11-25", "3-152", "000-881", "PEREZ FICTICIO JUAN", "CG", "COLECISTITIS FICTICIA", "2026-11-25T14:20:00+00:00", "2026-11-25T14:25:00+00:00"),
+      proc(4, "2026-11-25", "EXT", "000999", "CANCELADA FICTICIA ANA", "CG", "HERNIA FICTICIA", "2026-11-25T14:00:00+00:00", "2026-11-25T15:00:00+00:00"),
+      // Otra fecha: su propia última escritura (no se compara con la del 25).
+      proc(5, "2026-11-24", "EXT", "000998", "OTRA FICTICIA LUZ", "CG", "HERNIA FICTICIA", "2026-11-24T14:00:00+00:00", "2026-11-24T16:00:00+00:00"),
+      proc(6, "2026-11-24", "EXT", "000997", "OTRO FICTICIO SOL", "CG", "HERNIA FICTICIA", "2026-11-24T14:00:00+00:00", "2026-11-24T16:00:30+00:00")
+    ];
+    const st = { db: d, hoy: "2026-11-26" }; makeSandbox(st).sb.actualizarRegistro();
+    const T = Object.fromEntries(tab(st.ss, PCZ).map((x) => [x["ID"], x])), R = mesR(st.ss), S = tab(st.ss, SG);
+    check("P16a «Procedimientos del censo»: las filas que salieron de la hoja el mismo día (nombre corregido, expediente corregido, cancelada) quedan «Vigente: No»; la que sigue, «Sí»; otra fecha se compara solo con su fecha (30 s de diferencia: las dos «Sí»)",
+      T["1"]["Vigente"] === "No" && T["2"]["Vigente"] === "Sí" && T["3"]["Vigente"] === "No" && T["4"]["Vigente"] === "No" && T["5"]["Vigente"] === "Sí" && T["6"]["Vigente"] === "Sí" && T["2"]["ID episodio"] === "h1",
+      JSON.stringify(Object.values(T).map((x) => [x["ID"], x["Vigente"]])));
+    check("P16b Resumen mensual: solo cuentan las vigentes (3 en el censo: la corregida del 25 y las dos del 24; 3 de CG; 2 ambulatorias), no 6/6/4",
+      R["Procedimientos en el censo (n)"] === 3 && R["Procedimientos en el censo de CG (n)"] === 3 && R["Ambulatorios (n)"] === 2, JSON.stringify([R["Procedimientos en el censo (n)"], R["Procedimientos en el censo de CG (n)"], R["Ambulatorios (n)"]]));
+    check("P16c «Seguimiento de operados»: sin la persona fantasma «PEREZ FICTICIO JUA» ni la cancelada; JUAN una sola vez",
+      !S.some((x) => /JUA$|CANCELADA/.test(x["Nombre"])) && S.filter((x) => /JUAN/.test(x["Nombre"])).length === 1 && S.length === 3, JSON.stringify(S.map((x) => [x["Expediente"], x["Nombre"]])));
+  }
+  // 2) Cirugía de urgencias el 25 (cama QX) y el ingreso al servicio el 26: es el mismo episodio, no un reingreso.
+  {
+    const d = VACIO();
+    d.patients = [{ id: "h1", cama: "3-152", nombre: "PEREZ FICTICIO JUAN", exp: "000881", dx: "APENDICITIS FICTICIA", edad: "45", esp: "CG", ingreso: "2026-11-26", estado: "ESTABLE" },
+      { id: "h2", cama: "3-153", nombre: "LUNA FICTICIA ROSA", exp: "000771", dx: "HERNIA FICTICIA", edad: "50", esp: "CG", ingreso: "2026-11-26", estado: "ESTABLE" }];
+    d.notes = [{ patient_id: "h1", checklist: { cirugias: [{ id: "c1", fecha: "2026-11-25", procedimiento: "APENDICECTOMIA" }] } }];
+    d.censo_procedimientos = [proc(1, "2026-11-25", "QX", "000881", "PEREZ FICTICIO JUAN", "CG", "APENDICITIS FICTICIA"),
+      proc(2, "2026-11-25", "EXT", "000771", "LUNA FICTICIA ROSA", "CG", "HERNIA FICTICIA")];
+    const st = { db: d, hoy: "2026-11-28" }; makeSandbox(st).sb.actualizarRegistro();
+    const T = Object.fromEntries(tab(st.ss, PCZ).map((x) => [x["ID"], x])), S = tab(st.ss, SG), J = S.find((x) => /JUAN/.test(x["Nombre"])) || {}, L = S.find((x) => /ROSA/.test(x["Nombre"])) || {};
+    check("P17a cirugía en QX la víspera del ingreso: se liga al episodio (h1, Ambulatorio No); en EXT la víspera no se liga (ambulatorio que después se hospitalizó)",
+      T["1"]["ID episodio"] === "h1" && T["1"]["Ambulatorio"] === "No" && T["2"]["ID episodio"] === "" && T["2"]["Ambulatorio"] === "Sí" && mesR(st.ss)["Ambulatorios (n)"] === 1,
+      JSON.stringify(Object.values(T).map((x) => [x["ID"], x["ID episodio"], x["Ambulatorio"]])));
+    check("P17b «Reingresos posteriores (n)»: 0 para el episodio en que se operó (contiene la cirugía del 25); 1 para el ambulatorio del 25 que ingresó el 26",
+      J["Reingresos posteriores (n)"] === 0 && J["Primer procedimiento"] === "2026-11-25" && J["ID episodios"] === "h1" && L["Reingresos posteriores (n)"] === 1, JSON.stringify([J, L]));
+    const sb = makeSandbox({ db: VACIO(), hoy: "2026-11-28" }).sb;
+    const pe = sb.regPacientesPorExp_([
+      { "ID episodio": "y1", "Nombre": "ANA FICTICIA", "Expediente": "0009002", "Estado en registro": "Egresado", "Fecha de ingreso": "2026-11-10", "Fecha de egreso": "2026-11-12", "Motivo de egreso": "ALTA" },
+      { "ID episodio": "y2", "Nombre": "ANA FICTICIA", "Expediente": "0009002", "Estado en registro": "Egresado", "Fecha de ingreso": "2026-11-13", "Fecha de egreso": "2026-11-15", "Motivo de egreso": "ALTA" }]);
+    check("P17c regEpisodioDeProc_: la víspera vale solo con cama que no es EXT y sin episodio que cubra la fecha (el que la cubre gana); sin cama, solo la estancia",
+      sb.regEpisodioDeProc_(pe, "0009002", "ANA FICTICIA", "2026-11-09", "2026-11-28", "QX") === "y1" && sb.regEpisodioDeProc_(pe, "0009002", "ANA FICTICIA", "2026-11-09", "2026-11-28", "EXT") === ""
+      && sb.regEpisodioDeProc_(pe, "0009002", "ANA FICTICIA", "2026-11-09", "2026-11-28") === "" && sb.regEpisodioDeProc_(pe, "0009002", "ANA FICTICIA", "2026-11-12", "2026-11-28", "3-152") === "y1"
+      && sb.regEpisodioDeProc_(pe, "0009002", "ANA FICTICIA", "2026-11-08", "2026-11-28", "QX") === "", "");
+  }
+  // 3) El nombre de la tarjeta y el del censo difieren en acentos/espacios: la fila de Seguimiento no cambia de clave.
+  {
+    const d = VACIO();
+    d.archive = [egresado("ka", "e1", "PEREZ FICTICIO JUAN", "000881", "2026-11-20", "2026-11-24", {}, {})];
+    d.censo_procedimientos = [proc(1, "2026-11-22", "3-152", "000881", "PEREZ FICTICIO JUAN", "CG")];
+    const st = { db: d, hoy: "2026-11-25" }; makeSandbox(st).sb.actualizarRegistro();
+    d.censo_procedimientos.push(proc(2, "2026-11-25", "EXT", "000881", "PÉREZ  FICTICIO JUAN", "CG"));
+    st.hoy = "2026-11-26"; makeSandbox(st).sb.actualizarRegistro();
+    const S = tab(st.ss, SG);
+    check("P18 clave estable: un procedimiento posterior escrito «PÉREZ  FICTICIO JUAN» no crea otra fila ni deja la vieja «Vigente: No»; «Nombre más reciente» lo dice tal cual",
+      S.length === 1 && S[0]["Nombre"] === "PEREZ FICTICIO JUAN" && S[0]["Vigente"] === "Sí" && S[0]["Nombre más reciente"] === "PÉREZ  FICTICIO JUAN" && S[0]["Procedimientos en el censo (n)"] === 2,
+      JSON.stringify(S.map((x) => [x["Nombre"], x["Vigente"], x["Nombre más reciente"]])));
+  }
+  // 4) Expediente que el censo acepta y el registro no («123»): Ambulatorio vacío (salvo EXT) y sí entra a Seguimiento.
+  {
+    const d = VACIO();
+    d.censo_procedimientos = [proc(1, "2026-11-25", "3-152", "123", "CORTO FICTICIO EXP", "CG"), proc(2, "2026-11-25", "EXT", "12-3", "OTRO CORTO FICTICIO", "CG")];
+    const st = { db: d, hoy: "2026-11-26" }; makeSandbox(st).sb.actualizarRegistro();
+    const T = Object.fromEntries(tab(st.ss, PCZ).map((x) => [x["ID"], x])), S = tab(st.ss, SG), R = mesR(st.ss);
+    check("P19 expediente no válido para el registro: Ambulatorio vacío en cama de piso y «Sí» en EXT; «Ambulatorios (n)» = 1; las dos personas entran a Seguimiento con el expediente tal cual",
+      T["1"]["Ambulatorio"] === "" && T["2"]["Ambulatorio"] === "Sí" && R["Ambulatorios (n)"] === 1 && R["Procedimientos en el censo (n)"] === 2
+      && S.length === 2 && S.some((x) => x["Expediente"] === "123" && x["Nombre"] === "CORTO FICTICIO EXP") && S.some((x) => x["Expediente"] === "12-3"),
+      JSON.stringify({ t: Object.values(T).map((x) => x["Ambulatorio"]), s: S.map((x) => [x["Expediente"], x["Nombre"]]) }));
+  }
+  // 5) «Días desde el último procedimiento»: solo los primeros 30 días; las filas viejas no se reescriben cada noche.
+  {
+    const d = VACIO();
+    d.censo_procedimientos = [];
+    for (let i = 0; i < 30; i++) d.censo_procedimientos.push(proc(100 + i, "2026-10-01", "EXT", String(100000 + i), "PERSONA FICTICIA N" + "ABCDEFGHIJKLMNOPQRSTUVWXYZABCD"[i] + "X", "CG"));
+    d.censo_procedimientos.push(proc(200, "2026-11-24", "EXT", "200001", "RECIENTE FICTICIA ZOE", "CG"));
+    const st = { db: d, hoy: "2026-11-25" }; makeSandbox(st).sb.actualizarRegistro();
+    const antes = JSON.parse(JSON.stringify(st.ss.sheets[SG].cells)), w0 = st.ss.sheets[SG].filasEscritas || 0;
+    const S1 = tab(st.ss, SG);
+    st.hoy = "2026-11-26"; makeSandbox(st).sb.actualizarRegistro();
+    const despues = st.ss.sheets[SG].cells; let dif = 0;
+    for (let i = 1; i < despues.length; i++) if (JSON.stringify(despues[i]) !== JSON.stringify(antes[i])) dif++;
+    const S2 = tab(st.ss, SG), Z = S2.find((x) => /ZOE/.test(x["Nombre"])) || {};
+    check("P20 «Días desde el último procedimiento»: vacío pasados 30 días; al día siguiente sin datos nuevos solo cambia la fila reciente (1 de 31), no las 31",
+      S1.filter((x) => x["Días desde el último procedimiento"] === "").length === 30 && dif === 1 && Z["Días desde el último procedimiento"] === 2 && (st.ss.sheets[SG].filasEscritas || 0) - w0 <= 1,
+      JSON.stringify({ dif, w: (st.ss.sheets[SG].filasEscritas || 0) - w0, z: Z["Días desde el último procedimiento"] }));
+  }
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

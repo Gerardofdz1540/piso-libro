@@ -115,12 +115,13 @@ exitosa `aplicarEgresosCenso_` las usa así:
   duda no se aplica). Si la más reciente no cumple, no se busca otra más vieja (sería de otro ingreso o retiro).
 - Mientras el expediente siga en el censo activo **o en el tablero** (gracia de 12 min, guardas), espera: su
   copia todavía no existe.
-- Si la copia **no tiene motivo**, llama a `archive_set_egreso` (la función que usa la app) con
-  `p_tipo` = `alta` o `defuncion` y `p_por` = `Censo (hoja · ALTAS)` / `Censo (hoja · DEFUNCIONES)`.
+- Si la copia **no tiene motivo**, llama a `archive_set_egreso_si_vacio` (versión 2026.11.25-2) con
+  `p_tipo` = `alta` o `defuncion` y `p_por` = `Censo (hoja · ALTAS)` / `Censo (hoja · DEFUNCIONES)`. Es
+  **atómica**: la base solo escribe si `_egreso_tipo` sigue vacío y responde `ok`, `ya-tenia` o `no-encontrado`.
 - **Nunca pisa** un motivo elegido por una persona. Si la hoja dice DEFUNCIONES y la copia otra cosa (o al
-  revés), solo suma una *discrepancia* al log. (La comprobación es GET y luego RPC: si alguien elige el motivo en
-  la app justo entre las dos, segundos, el censo lo reemplaza; cerrarlo del todo requiere un parámetro
-  «solo si está vacío» en `archive_set_egreso`, un cambio en la base.)
+  revés), solo suma una *discrepancia* al log. Si alguien lo eligió en la app entre el GET y la llamada, la
+  función responde `ya-tenia`: cuenta como «ya tenía motivo», se da por resuelto y no se reintenta.
+  `no-encontrado` (o un error HTTP) cuenta como error y el egreso sigue pendiente.
 - Sin copia todavía: queda **pendiente** en la Script Property `PL_EGRESOS_PEND`
   (`{exp: {tipo, n, visto, u, k, act}}`, `n` = huella corta del nombre completo, no el nombre) **solo mientras
   la fila siga en la hoja**: si sale de ALTAS/DEFUNCIONES sin resolverse, se descarta. Se reintenta con espera
@@ -131,9 +132,39 @@ exitosa `aplicarEgresosCenso_` las usa así:
 - Un mismo expediente en ALTAS y DEFUNCIONES a la vez es una duda: no se aplica nada.
 - Cualquier error (HTTP o de otro tipo) queda en el log y el sync sigue. El log solo lleva conteos.
 
-Requiere que la `service_role` pueda ejecutar `public.archive_set_egreso` (scripts/supabase_archive_egreso.sql
-la concede a `authenticated`; en Supabase la `service_role` la conserva por los privilegios por defecto). Si la
-llamada falla, el egreso sigue pendiente y el log cuenta los errores.
+Requiere `public.archive_set_egreso_si_vacio` (scripts/supabase_archive_egreso.sql; solo la `service_role` puede
+ejecutarla). Si la llamada falla, el egreso sigue pendiente y el log cuenta los errores.
+
+## Procedimientos del censo → `censo_procedimientos` (versión 2026.11.25-2)
+
+«En procedimientos se centra el total de cirugías que se realizan, al menos de cirugía general; que lo
+registre, nos servirá para conservar a esos pacientes como seguimiento.» La sección **PROCEDIMIENTOS** de la
+hoja (CAMA «3-152», «EXT» = ambulatorio, «QX», «UCIP»; EXPEDIENTE, NOMBRE, EDAD, DIAGNÓSTICO, ESPECIALIDAD
+—CG, CCR, CT, ENDOSCO…—, ADSCRITO, RESIDENTE) sigue **sin** sincronizarse a `patients` (los pacientes del
+tablero no cambian), pero al final de cada sincronización exitosa `guardarProcedimientosCenso_` la guarda en
+`public.censo_procedimientos` (scripts/supabase_censo_procedimientos.sql; solo `service_role`):
+
+- `parseCenso_` junta aparte (`_procedimientos`, no enumerable) las filas de la sección con **expediente
+  válido y nombre**. La fila de residentes («R4 … | R3 …») y las filas sin expediente no entran. Un
+  encabezado administrativo con contador o fecha al lado («INGRESOS | 5 | 25/11/2026», 3+ celdas) también cierra
+  la sección (25 nov 2026, revisión); fuera de PROCEDIMIENTOS esos encabezados siguen como antes.
+- **Fecha**: la de la celda **A2** (fila de encabezados, columna A) si es una fecha (Date, `AAAA-MM-DD`,
+  `D/M/AA[AA]` con `/`, `-` o `.`, con texto alrededor como «MIÉRCOLES 25/11/2026», o «25 de noviembre de 2026»);
+  si no, hoy en la zona del script (fecha de respaldo, y el log lo dice). Con la fecha de respaldo, si la lista es
+  idéntica a la que se guardó con otra fecha (la hoja no se tocó), no se vuelve a escribir: así no se duplica cada
+  día. `PL_PROC_CENSO` guarda además `l`, la huella de la lista sin la fecha.
+- **UPSERT** `on_conflict=fecha,exp,nombre_norm` (`Prefer: resolution=merge-duplicates, return=minimal`):
+  una fila por fecha + expediente + nombre normalizado (sin acentos, mayúsculas, espacios simples). El mismo
+  expediente con dos nombres son **dos** filas. No manda `visto_primero` (lo pone la base al insertar y se
+  conserva) y sí `visto_ultimo` = ahora.
+- Para no escribir lo mismo cada 5 min guarda en la Script Property `PL_PROC_CENSO` `{f: fecha, h: huella, t}`
+  (huella corta de la lista del día, sin nombres): escribe solo si la lista **cambió** o pasaron **≥ 60 min**
+  desde la última escritura (así `visto_ultimo` se mantiene al día). Al cambiar la fecha la clave se limpia.
+- Tope de **80 filas** por corrida. Un error (HTTP o de otro tipo) queda en el log (solo conteos), no guarda
+  la huella (se reintenta en la próxima corrida) y **nunca** rompe la sincronización.
+- Google no guarda los censos viejos: solo hay datos desde que se instaló esta versión (25 nov 2026). El
+  registro de pacientes los copia a sus pestañas «Procedimientos del censo» y «Seguimiento de operados»
+  (ver REGISTRO.md).
 
 ## Watchdog de laboratorios
 
@@ -240,7 +271,8 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
   del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
   ocupante.
 - **Secciones administrativas que ignora por completo:** ALTA(S), DEFUNCIONES, EGRESOS, PROCEDIMIENTOS,
-  INGRESOS, MOVIMIENTOS DE CAMAS, TPN.
+  INGRESOS, MOVIMIENTOS DE CAMAS, TPN. (Sus pacientes no entran al tablero; ALTAS/DEFUNCIONES solo dan el
+  motivo del egreso y PROCEDIMIENTOS se guarda aparte en `censo_procedimientos`, ver arriba.)
 - **Salas de otros servicios (GINECOLOGÍA, ONCOLOGÍA, HEMATOLOGÍA):** se ignoran *sus* pacientes,
   pero un paciente **nuestro** (especialidad quirúrgica: CG y demás cirugías, NCX, URO…) hospedado
   ahí **sí** se capta, con su sección. Así una embarazada de cirugía general en cama de gine (p. ej.

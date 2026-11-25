@@ -35,7 +35,7 @@ function makeSandbox(state) {
         const u = url.replace(/^https?:\/\/[^/]+/, "");
         let body = null;
         try { body = opts && opts.payload ? JSON.parse(opts.payload) : null; } catch (_) { body = opts.payload; }
-        calls.push({ m, u, body });
+        calls.push({ m, u, body, h: (opts && opts.headers) || {} });
         const h = state.handler && state.handler(m, u, body, calls);
         if (h) return resp(h.code, h.body);
         if (m === "GET" && u.startsWith("/rest/v1/patients?select=id,cama,exp,nombre,updated_by")) return resp(200, state.cur || []);
@@ -46,6 +46,7 @@ function makeSandbox(state) {
         }
         if (m === "POST" && u.startsWith("/rest/v1/archive")) return resp(201, "");
         if (m === "POST" && u.startsWith("/rest/v1/sync_log")) return resp(201, "");
+        if (m === "POST" && u.startsWith("/rest/v1/censo_procedimientos")) return resp(201, "");
         if (m === "POST" && u.startsWith("/rest/v1/patients?on_conflict=cama")) return resp(201, "");
         if (m === "PATCH") return resp(204, "");
         if (m === "DELETE") return resp(204, "");
@@ -1558,19 +1559,21 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
         if (st.fallo === 'get') return { code: 503, body: 'no disponible' };
         return { code: 200, body: (st.archive || {})[expDe(u)] || [] };
       }
-      if (m === 'POST' && u === '/rest/v1/rpc/archive_set_egreso') return st.fallo === 'rpc' ? { code: 500, body: 'boom' } : { code: 200, body: '"ok"' };
+      // 25 nov 2026 (v2): la función atómica; st.rpcResp simula su respuesta ('ok' | 'ya-tenia' | 'no-encontrado').
+      if (m === 'POST' && u === '/rest/v1/rpc/archive_set_egreso_si_vacio') return st.fallo === 'rpc' ? { code: 500, body: 'boom' } : { code: 200, body: JSON.stringify(st.rpcResp || 'ok') };
       return null;
     };
     const env = makeSandbox(st);
     env.sb.readCensoRows_ = () => rows;
     let res = null, err = '';
     try { res = env.sb.doSync(); } catch (e) { err = String(e); }
-    const rpc = env.calls.filter((c) => c.m === 'POST' && c.u === '/rest/v1/rpc/archive_set_egreso').map((c) => c.body);
+    const rpc = env.calls.filter((c) => c.m === 'POST' && c.u === '/rest/v1/rpc/archive_set_egreso_si_vacio').map((c) => c.body);
+    const rpcVieja = env.calls.filter((c) => c.u === '/rest/v1/rpc/archive_set_egreso').length;
     const arcGet = env.calls.filter((c) => c.m === 'GET' && c.u.startsWith('/rest/v1/archive?'));
     const pac = env.calls.filter((c) => /\/rest\/v1\/(patients|notes)/.test(c.u) && !(c.m === 'GET' && c.u.startsWith('/rest/v1/patients?select=id,cama'))).map((c) => c.m + ' ' + c.u + ' ' + JSON.stringify(c.body));
     const pend = JSON.parse(st.props.PL_EGRESOS_PEND || '{}'), hechos = JSON.parse(st.props.PL_EGRESOS_HECHOS || '{}');
     const logEg = env.logs.filter((l) => /^Egresos del censo/.test(l));
-    return { env, res, err, rpc, arcGet, pac, pend, hechos, logEg, st };
+    return { env, res, err, rpc, rpcVieja, arcGet, pac, pend, hechos, logEg, st };
   };
 
   // 29a parseCenso_: misma salida; las filas de ALTAS/DEFUNCIONES van aparte (no enumerable) y las demás administrativas no.
@@ -1797,6 +1800,208 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
       total += rk.arcGet.length; props = rk.st.props;
     }
     check('T29u3 40 sin copia durante 1 h (12 corridas): ≤ 4 intentos cada uno (antes 29 peticiones por corrida, 348)', total <= 160 && total >= 40, String(total));
+  }
+
+  // 29v función atómica (25 nov 2026, v2): 'ya-tenia' = alguien lo eligió entre el GET y la llamada → resuelto, sin reintento.
+  {
+    const arch = { [ALTA[0]]: [copia('a-alta', ALTA[0], ALTA[1])] };
+    const r = correr(hoja([ALTA], null), { archive: arch, rpcResp: 'ya-tenia' });
+    check('T29v1 la RPC responde «ya-tenia»: una sola llamada a archive_set_egreso_si_vacio (nunca a archive_set_egreso), cuenta como «ya tenían motivo», se da por resuelto y sin pendientes',
+      !r.err && r.rpc.length === 1 && r.rpcVieja === 0 && r.rpc[0].p_id === 'a-alta' && r.rpc[0].p_tipo === 'alta' && /0 motivos aplicados, 1 ya tenían motivo/.test(r.logEg[0] || '')
+      && /0 errores/.test(r.logEg[0] || '') && !r.pend[ALTA[0]] && !!r.hechos[ALTA[0]], JSON.stringify({ rpc: r.rpc, log: r.logEg, pend: r.pend }));
+    const r2 = correr(hoja([ALTA], null), { archive: arch, rpcResp: 'ok', props: r.st.props });
+    check('T29v2 corrida siguiente tras «ya-tenia»: no se reintenta (ni GET ni RPC)', r2.rpc.length === 0 && r2.arcGet.length === 0, JSON.stringify(r2.arcGet.length));
+    const r3 = correr(hoja([ALTA], null), { archive: arch, rpcResp: 'no-encontrado' });
+    check('T29v3 la RPC responde «no-encontrado»: cuenta como error y el egreso sigue pendiente', r3.rpc.length === 1 && /1 errores/.test(r3.logEg[0] || '') && !!r3.pend[ALTA[0]] && !r3.hechos[ALTA[0]],
+      JSON.stringify({ log: r3.logEg, pend: r3.pend }));
+    const r4 = correr(hoja([ALTA], null), { archive: arch, rpcResp: 'ok' });
+    check('T29v4 la RPC responde «ok»: motivo aplicado con p_por «Censo (hoja · ALTAS)», sin llamar a la función vieja', r4.rpc.length === 1 && r4.rpcVieja === 0 && r4.rpc[0].p_por === 'Censo (hoja · ALTAS)'
+      && /1 motivos aplicados/.test(r4.logEg[0] || '') && !!r4.hechos[ALTA[0]], JSON.stringify(r4.logEg));
+    const { sb } = makeSandbox({});
+    check('T29v5 egresoRespuestaRpc_: entiende "ok"/ok/"ya-tenia"/"no-encontrado"; cualquier otra cosa es \'\'',
+      ['"ok"', 'ok', ' "ya-tenia" ', '"no-encontrado"', '', 'null', '{"x":1}', '"okey"'].map(sb.egresoRespuestaRpc_).join('|') === 'ok|ok|ya-tenia|no-encontrado||||', '');
+  }
+}
+
+// ── 30) Sección PROCEDIMIENTOS → censo_procedimientos (25 nov 2026, v2) ─────────────────────────────────────────────
+{
+  const H = ['2026-11-25', 'CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+  const pr = (cama, exp, nombre, esp, dx) => ['', cama, exp, nombre, '50', dx || 'DX FICTICIO', esp || 'CG', 'ADSC FICTICIO', 'RES FICTICIO', '20/11/2026', '5', 'ESTABLE'];
+  const prc = (cama, exp, nombre, esp, dx) => ['', cama, exp, nombre, '41', dx || 'COLECISTITIS FICTICIA', esp || 'CG', 'ADSC PROC FICTICIO', 'RES PROC FICTICIO', '', '', ''];
+  const piso = []; for (let i = 0; i < 12; i++) piso.push(pr('3-1' + (60 + i), '26-6' + (1000 + i), 'PACIENTE FICTICIO PROC ' + 'ABCDEFGHIJKL'[i]));
+  const PROCS = [
+    prc('3-152', '26-60001', 'PÉREZ  FICTICIO   JUAN'),
+    prc('EXT', '26-60002', 'LOPEZ FICTICIA MARIA', 'ENDOSCO', 'ERGE FICTICIA'),
+    prc('QX', '26-60003', 'RUIZ FICTICIO PEDRO', 'CCR'),
+    prc('UCIP', '26-60004', 'SOTO FICTICIA ANA', 'CT'),
+    prc('EXT', '26-60001', 'GARCIA FICTICIA ROSA', 'CG'),            // mismo expediente, otra persona: otra fila
+  ];
+  const titulo = ['CENSO PLASCENCIA FICTICIO'];
+  const hoja = (procs, a2, extra) => {
+    const h = H.slice(); if (a2 !== undefined) h[0] = a2;
+    return [titulo, h, ['PISO']].concat(piso).concat(procs === null ? [] : [['PROCEDIMIENTOS']].concat(procs || PROCS)
+      .concat([['', 'R4 FICTICIO UNO', '', 'R3 FICTICIO DOS'], ['', 'EXT', '', 'SIN EXPEDIENTE FICTICIO', '30'], ['', '', '', 'OTRA SIN EXP FICTICIA']]))
+      .concat([['MOVIMIENTOS DE CAMAS'], pr('3-180', '26-69902', 'MOVIMIENTO FICTICIO DOS'), ['INGRESOS'], pr('3-181', '26-69903', 'INGRESO FICTICIO TRES'), ['TPN'], pr('3-182', '26-69904', 'TPN FICTICIO CUATRO')])
+      .concat(extra || []);
+  };
+  const cur0 = () => piso.map((r, i) => ({ id: 'q' + i, cama: r[1], exp: r[2], nombre: r[3], edad: '50', dx: 'DX FICTICIO', esp: 'CG', adscrito: 'ADSC FICTICIO', residente: 'RES FICTICIO',
+    ingreso: '2026-11-20', dias: 5, estado: 'ESTABLE', seccion: 'PISO', es_mio: true, hoja_azul: false, updated_by: 'sheet-sync' }));
+  const realFmt = (d, tz, f) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const correr = (rows, st) => {
+    st.cur = st.cur || cur0(); st.props = st.props || {};
+    const env = makeSandbox(st);
+    env.sb.readCensoRows_ = () => rows;
+    if (st.fmtReal) { env.sb.Utilities.formatDate = realFmt; env.sb.Session.getScriptTimeZone = () => 'America/Mexico_City'; }
+    let res = null, err = '';
+    try { res = env.sb.doSync(); } catch (e) { err = String(e); }
+    const posts = env.calls.filter((c) => c.m === 'POST' && c.u.startsWith('/rest/v1/censo_procedimientos'));
+    const pac = env.calls.filter((c) => /\/rest\/v1\/(patients|notes)/.test(c.u) && !(c.m === 'GET' && c.u.startsWith('/rest/v1/patients?select=id,cama'))).map((c) => c.m + ' ' + c.u + ' ' + JSON.stringify(c.body));
+    return { env, res, err, posts, pac, prop: st.props.PL_PROC_CENSO ? JSON.parse(st.props.PL_PROC_CENSO) : null, st };
+  };
+
+  {
+    const { sb } = makeSandbox({});
+    const con = sb.parseCenso_(hoja()), sin = sb.parseCenso_(hoja(null));
+    const pp = con._procedimientos || [];
+    check('T30a parseCenso_: los pacientes del censo activo son idénticos con y sin la sección PROCEDIMIENTOS; _procedimientos (no enumerable) trae las 5 filas con expediente (EXT/ENDOSCO, QX, UCIP y el mismo exp con otro nombre) y ni la fila de residentes ni las sin expediente; _fechaCenso = A2',
+      JSON.stringify(con) === JSON.stringify(sin) && con.length === 12 && !Object.prototype.propertyIsEnumerable.call(con, '_procedimientos')
+      && pp.length === 5 && pp.map((p) => p.cama).join(',') === '3-152,EXT,QX,UCIP,EXT' && pp[1].esp === 'ENDOSCO' && pp[0].adscrito === 'ADSC PROC FICTICIO' && pp[0].residente === 'RES PROC FICTICIO'
+      && !pp.some((p) => /R4|SIN EXP|MOVIMIENTO|INGRESO FICT|TPN/.test(p.nombre + p.cama)) && con._fechaCenso === '2026-11-25',
+      JSON.stringify({ n: con.length, pp, f: con._fechaCenso }));
+  }
+
+  {
+    const base = correr(hoja(null), {});
+    const st = {};
+    const r = correr(hoja(), st);
+    const body = r.posts.length ? r.posts[0].body : [];
+    const u = r.posts.length ? r.posts[0].u : '';
+    const h = r.posts.length ? r.posts[0].h : {};
+    check('T30b doSync guarda la sección PROCEDIMIENTOS: un UPSERT on_conflict=fecha,exp,nombre_norm con merge-duplicates/return=minimal; 5 filas con la fecha de A2 (2026-11-25)',
+      !r.err && r.posts.length === 1 && u === '/rest/v1/censo_procedimientos?on_conflict=fecha,exp,nombre_norm' && /resolution=merge-duplicates/.test(h.Prefer || '') && /return=minimal/.test(h.Prefer || '')
+      && body.length === 5 && body.every((b) => b.fecha === '2026-11-25'), JSON.stringify({ err: r.err, u, h, body }));
+    const juan = body.find((b) => b.exp === '26-60001' && /JUAN/.test(b.nombre)) || {}, rosa = body.find((b) => b.exp === '26-60001' && /ROSA/.test(b.nombre));
+    check('T30c nombre_norm sin acentos, en mayúsculas y con espacios simples; el mismo expediente con dos nombres son dos filas; ENDOSCO/EXT entran; sin visto_primero y con visto_ultimo = ahora',
+      juan.nombre_norm === 'PEREZ FICTICIO JUAN' && !!rosa && rosa.nombre_norm === 'GARCIA FICTICIA ROSA' && body.some((b) => b.cama === 'EXT' && b.esp === 'ENDOSCO')
+      && body.every((b) => !('visto_primero' in b) && Math.abs(new Date(b.visto_ultimo).getTime() - Date.now()) < 60000)
+      && juan.edad === '41' && juan.dx === 'COLECISTITIS FICTICIA' && juan.esp === 'CG' && juan.adscrito === 'ADSC PROC FICTICIO' && juan.residente === 'RES PROC FICTICIO' && juan.cama === '3-152',
+      JSON.stringify(body));
+    check('T30d los pacientes sincronizados (patients/notes) y el resultado de doSync no cambian con la sección PROCEDIMIENTOS',
+      JSON.stringify(r.pac) === JSON.stringify(base.pac) && JSON.stringify(r.res) === JSON.stringify(base.res) && r.res && r.res.capturados === 12 && base.posts.length === 0,
+      JSON.stringify({ a: r.pac, b: base.pac }));
+    check('T30e huella guardada en PL_PROC_CENSO {f, h, t} sin nombres ni expedientes; el log solo lleva conteos',
+      r.prop && r.prop.f === '2026-11-25' && /^[0-9a-z]{1,7}$/.test(r.prop.h) && Math.abs(r.prop.t - Date.now()) < 60000 && !/FICTICI|26-6/.test(st.props.PL_PROC_CENSO)
+      && !r.env.logs.some((l) => /FICTICI|26-6/.test(l)) && r.env.logs.some((l) => /Procedimientos del censo: 5 filas guardadas/.test(l)), JSON.stringify({ prop: r.prop, logs: r.env.logs }));
+    // Segunda corrida (5 min después) con la misma hoja: no se escribe.
+    const r2 = correr(hoja(), { props: st.props });
+    check('T30f segunda corrida igual: no se escribe nada en censo_procedimientos', !r2.err && r2.posts.length === 0 && r2.prop.h === r.prop.h, JSON.stringify(r2.posts.length));
+    // A los 60 min se reescribe (visto_ultimo al día).
+    const p3 = JSON.parse(st.props.PL_PROC_CENSO); p3.t -= 60 * 60000; st.props.PL_PROC_CENSO = JSON.stringify(p3);
+    const r3 = correr(hoja(), { props: st.props });
+    check('T30g a los 60 min con la misma lista: reescribe las 5 filas con visto_ultimo nuevo y actualiza la marca de tiempo',
+      r3.posts.length === 1 && r3.posts[0].body.length === 5 && Date.now() - r3.prop.t < 60000, JSON.stringify(r3.prop));
+    const p4 = JSON.parse(st.props.PL_PROC_CENSO); p4.t -= 59 * 60000; st.props.PL_PROC_CENSO = JSON.stringify(p4);
+    const r4 = correr(hoja(), { props: st.props });
+    check('T30h a los 59 min con la misma lista: todavía no escribe', r4.posts.length === 0, '');
+    // Cambia la lista (un procedimiento nuevo): se escribe en la misma corrida.
+    const r5 = correr(hoja(PROCS.concat([prc('3-153', '26-60005', 'VEGA FICTICIO LUIS')])), { props: st.props });
+    check('T30i la lista cambió (un procedimiento nuevo): escribe en la misma corrida (6 filas)', r5.posts.length === 1 && r5.posts[0].body.length === 6 && r5.prop.h !== r.prop.h, JSON.stringify(r5.posts.length));
+  }
+
+  // Error HTTP / excepción: la sync sigue igual y la huella no se guarda (se reintenta la próxima).
+  {
+    const base = correr(hoja(null), {});
+    [['http', () => ({ code: 500, body: 'boom' })], ['throw', () => { throw new Error('red caída (ficticio)'); }]].forEach(([n, f]) => {
+      const st = { handler: (m, u) => (m === 'POST' && u.startsWith('/rest/v1/censo_procedimientos') ? f() : null) };
+      const r = correr(hoja(), st);
+      check('T30j-' + n + ' falla censo_procedimientos (' + n + '): doSync termina igual, mismos pacientes, sin huella guardada y el log sin datos del paciente',
+        !r.err && r.res && JSON.stringify(r.pac) === JSON.stringify(base.pac) && JSON.stringify(r.res) === JSON.stringify(base.res) && !r.prop
+        && r.env.logs.some((l) => /^Procedimientos del censo: (HTTP 500|error)/.test(l)) && !r.env.logs.some((l) => /FICTICI|26-6/.test(l)),
+        JSON.stringify({ err: r.err, logs: r.env.logs }));
+    });
+  }
+
+  // Fecha del censo: Date, DD/MM/AAAA, AAAA-MM-DD; si no hay, hoy en la zona del script.
+  {
+    const r1 = correr(hoja(undefined, new Date(2026, 10, 24)), { fmtReal: true });
+    const r2 = correr(hoja(undefined, '23/11/2026'), {});
+    const r3 = correr(hoja(undefined, 'FECHA FICTICIA'), { fmtReal: true });
+    const r4 = correr(hoja(undefined, '31/02/2026'), {});
+    const hoy = realFmt(new Date());
+    check('T30k fecha: A2 como Date → 2026-11-24; texto 23/11/2026 → 2026-11-23; texto no fecha → hoy (zona del script); fecha imposible → hoy',
+      r1.posts[0].body[0].fecha === '2026-11-24' && r2.posts[0].body[0].fecha === '2026-11-23' && r3.posts[0].body[0].fecha === hoy && r4.posts[0].body[0].fecha === new Date().toISOString().slice(0, 10),
+      JSON.stringify([r1, r2, r3, r4].map((r) => r.posts[0] && r.posts[0].body[0].fecha)));
+    const { sb } = makeSandbox({});
+    check('T30l fechaCenso_: A2 en una hoja cuya fila de encabezados es la 1 (rows[1] es un paciente) → toma la fila de encabezados si A2 no es fecha',
+      sb.fechaCenso_([['2026-11-20', 'CAMA'], ['', 'x']], 0) === '2026-11-20' && sb.fechaCenso_([['x'], ['2026-11-21']], 1) === '2026-11-21', '');
+  }
+
+  // Cambio de fecha: se limpia la clave; tope de filas; duplicados exactos.
+  {
+    const st = { props: {} };
+    correr(hoja(), st);
+    const huellaAyer = JSON.parse(st.props.PL_PROC_CENSO).h;
+    const r2 = correr(hoja(undefined, '2026-11-26'), { props: st.props });
+    check('T30m cambia la fecha del censo: escribe con la fecha nueva aunque la lista sea igual y la clave queda con la fecha nueva',
+      r2.posts.length === 1 && r2.posts[0].body.every((b) => b.fecha === '2026-11-26') && r2.prop.f === '2026-11-26' && r2.prop.h !== huellaAyer, JSON.stringify(r2.prop));
+    const r3 = correr(hoja([], '2026-11-27'), { props: st.props });
+    check('T30n día nuevo sin procedimientos: no escribe nada y se borra la clave del día anterior', r3.posts.length === 0 && !st.props.PL_PROC_CENSO, JSON.stringify(st.props.PL_PROC_CENSO));
+    const muchos = []; for (let i = 0; i < 100; i++) muchos.push(prc('EXT', '26-61' + String(100 + i), 'PACIENTE FICTICIO NUM ' + 'ABCDEFGHIJ'[i % 10] + 'ABCDEFGHIJ'[Math.floor(i / 10)]));
+    const r4 = correr(hoja(muchos), {});
+    check('T30o 100 procedimientos: como mucho 80 filas por corrida', r4.posts.length === 1 && r4.posts[0].body.length === 80, String(r4.posts[0] && r4.posts[0].body.length));
+    const r5 = correr(hoja([prc('3-152', '26-60001', 'PEREZ FICTICIO JUAN'), prc('QX', '26-60001', 'Pérez Ficticio  Juan')]), {});
+    check('T30p mismo expediente y mismo nombre (normalizado) dos veces: una sola fila (gana la de más abajo)', r5.posts[0].body.length === 1 && r5.posts[0].body[0].cama === 'QX', JSON.stringify(r5.posts[0].body));
+  }
+
+  // 25 nov 2026 (revisión): A2 en otros formatos que la hoja usa; antes caían a «hoy».
+  {
+    const { sb } = makeSandbox({});
+    const f = (a2) => sb.fechaCensoLeida_([['CENSO FICTICIO'], [a2, 'CAMA', 'EXPEDIENTE', 'NOMBRE']], 1);
+    const buenos = ['25/11/26', '25-11-2026', '25.11.2026', 'MIÉRCOLES 25/11/2026', 'Miércoles 25 de noviembre de 2026', '25-NOV-2026', ' 2026-11-25 ', 'CENSO 2026-11-25 TURNO MATUTINO', '25 / 11 / 2026'];
+    const malos = ['31.02.2026', 'FECHA FICTICIA', '3-152', '25 DE FICTICIO DE 2026', '125/11/2026', ''];
+    check('T30q fechaCenso_: «25/11/26», «25-11-2026», «25.11.2026», «MIÉRCOLES 25/11/2026», «25 de noviembre de 2026», «25-NOV-2026» y texto alrededor → 2026-11-25; fecha imposible, cama o texto sin fecha → sin fecha (respaldo)',
+      buenos.every((a) => f(a) === '2026-11-25') && malos.every((a) => f(a) === ''),
+      JSON.stringify(buenos.concat(malos).map((a) => [a, f(a)])));
+  }
+
+  // 25 nov 2026 (revisión): con la fecha de respaldo (A2 sin fecha) la misma lista del día anterior no se vuelve a insertar
+  // con la fecha nueva (la hoja no se tocó); una lista distinta sí se escribe; el log lo dice sin datos del paciente.
+  {
+    const st = { props: {}, fmtReal: true };
+    const r1 = correr(hoja(undefined, 'FECHA FICTICIA'), st);
+    const hoy = realFmt(new Date());
+    const p = JSON.parse(st.props.PL_PROC_CENSO); p.f = '2026-11-01'; p.t -= 24 * 3600000; st.props.PL_PROC_CENSO = JSON.stringify(p);   // «ayer»
+    const r2 = correr(hoja(undefined, 'FECHA FICTICIA'), { props: st.props, fmtReal: true });
+    check('T30r fecha de respaldo: la primera vez escribe con hoy y lo dice en el log; al día siguiente con la misma lista no escribe nada ni borra la huella',
+      r1.posts.length === 1 && r1.posts[0].body.every((b) => b.fecha === hoy) && r1.env.logs.some((l) => /5 filas guardadas con la fecha de hoy \(A2 no trae una fecha/.test(l))
+      && r2.posts.length === 0 && JSON.parse(st.props.PL_PROC_CENSO).f === '2026-11-01' && r2.env.logs.some((l) => /la lista es la misma del día anterior/.test(l))
+      && !r1.env.logs.concat(r2.env.logs).some((l) => /FICTICI|26-6/.test(l)), JSON.stringify({ a: r1.env.logs, b: r2.env.logs }));
+    const r3 = correr(hoja(PROCS.concat([prc('3-153', '26-60005', 'VEGA FICTICIO LUIS')]), 'FECHA FICTICIA'), { props: st.props, fmtReal: true });
+    const r4 = correr(hoja(undefined, '2026-11-02'), { props: Object.assign({}, st.props, { PL_PROC_CENSO: JSON.stringify(p) }) });
+    check('T30s fecha de respaldo con una lista distinta: escribe las 6 filas con hoy; con A2 legible y la misma lista: escribe con la fecha de A2 (la regla solo aplica al respaldo)',
+      r3.posts.length === 1 && r3.posts[0].body.length === 6 && r3.posts[0].body.every((b) => b.fecha === hoy) && JSON.parse(st.props.PL_PROC_CENSO).f === hoy
+      && r4.posts.length === 1 && r4.posts[0].body.every((b) => b.fecha === '2026-11-02'), JSON.stringify([r3.posts.length, r4.posts.length]));
+  }
+
+  // 25 nov 2026 (revisión): un encabezado con contador o fecha al lado (3+ celdas) cierra PROCEDIMIENTOS.
+  {
+    const { sb } = makeSandbox({});
+    const ing = prc('3-190', '26-69990', 'INGRESO FICTICIO CERRADO');
+    const tres = sb.parseCenso_(hoja(PROCS.concat([['', 'INGRESOS', '', '5', '25/11/2026'], ing])));
+    const mov = sb.parseCenso_(hoja(PROCS.concat([['', 'MOVIMIENTOS DE CAMAS', '', 'TOTAL: 2', '25/11/2026'], ing])));
+    const alta = sb.parseCenso_(hoja(PROCS.concat([['', 'ALTAS', '', '3', '25.11.2026'], ing])));
+    const sin = sb.parseCenso_(hoja(null));
+    const nombres = (o) => o._procedimientos.map((x) => x.nombre);
+    check('T30t encabezado de 3+ celdas (INGRESOS | 5 | fecha; MOVIMIENTOS | TOTAL: 2 | fecha; ALTAS | 3 | fecha) cierra PROCEDIMIENTOS: el paciente de abajo no entra como procedimiento y los pacientes sincronizados no cambian',
+      [tres, mov, alta].every((o) => o._procedimientos.length === 5 && nombres(o).indexOf('INGRESO FICTICIO CERRADO') === -1 && JSON.stringify(o) === JSON.stringify(sin)),
+      JSON.stringify([tres, mov, alta].map(nombres)));
+    // Una fila sin expediente que es un paciente (nombre + dx + especialidad) o un encabezado con texto largo NO cierra la sección.
+    const pac = sb.parseCenso_(hoja(PROCS.concat([['', '', '', 'ALTAMIRANO FICTICIO JUAN', '45', 'COLECISTITIS', 'CG'], ['', 'INGRESOS', '', 'PEREZ FICTICIO ANA', 'PENDIENTE CAMA'], ['', 'INGRESOS DE HOY FICTICIOS Y PENDIENTES DE CAMA EN URGENCIAS', '', '5', '25/11/2026'], ing])));
+    check('T30u no cierran PROCEDIMIENTOS: un paciente sin expediente (nombre, edad, dx, especialidad), un «INGRESOS» con un nombre al lado, ni un texto largo; la fila de abajo sigue siendo procedimiento',
+      pac._procedimientos.length === 6 && nombres(pac)[5] === 'INGRESO FICTICIO CERRADO' && JSON.stringify(pac) === JSON.stringify(sin), JSON.stringify(nombres(pac)));
+    const ant = sb.parseCenso_([['CENSO FICTICIO'], H, ['PISO']].concat(piso).concat([['', 'INGRESOS', '', '5', '25/11/2026'], pr('3-191', '26-69991', 'INGRESO FICTICIO PISO')]));
+    check('T30v fuera de PROCEDIMIENTOS un encabezado de 3+ celdas sigue sin cambiar la sección (los pacientes sincronizados no cambian respecto a antes)',
+      ant.length === 13 && ant.some((x) => x.nombre === 'INGRESO FICTICIO PISO'), String(ant.length));
   }
 }
 
