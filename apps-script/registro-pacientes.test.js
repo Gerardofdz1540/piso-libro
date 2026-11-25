@@ -2688,7 +2688,7 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
   // denominadores de mortalidad); se cuenta aparte al final, y «analizables» es el universo de los indicadores.
   const morK = anK[AIN].find((x) => x["Periodo"] === "Acumulado" && x["Indicador"] === "Mortalidad hospitalaria (desenlace conocido)" && x["Estrato"] === "Todos");
   check("C25c el flujo de la cohorte resta en orden: 4 en el registro − 1 duplicada − 0 borrados − 0 hospitalizados − 1 sin desenlace = 2 analizables (operado 1, con labs seriados 0, sin fecha de ingreso 1) = denominador de la mortalidad con desenlace conocido; 1 cultivo y 1 expediente de WinLab sin episodio",
-    JSON.stringify(fl.map((x) => x[2])) === JSON.stringify([4, 1, 0, 0, 1, 2, 1, 0, 1, 1, 1]) && fl[0][1] === "Episodios en el registro" && /^= Episodios analizables/.test(fl[5][1]) && morK && morK["Denominador"] === fl[5][2] && fl.every((x, i) => x[0] === i + 1) && new Set(anK[AFL].map((x) => x["Paso"])).size === fl.length,
+    JSON.stringify(fl.map((x) => x[2])) === JSON.stringify([4, 1, 0, 0, 1, 2, 1, 0, 1, 1, 1]) && fl[0][1] === "Episodios en el registro" && /^Episodios analizables/.test(fl[5][1]) && morK && morK["Denominador"] === fl[5][2] && fl.every((x, i) => x[0] === i + 1) && new Set(anK[AFL].map((x) => x["Paso"])).size === fl.length,
     JSON.stringify(fl));
   const rk = anK["Resumen mensual"].find((x) => x["Mes"] === "2026-11");
   check("C25d Resumen mensual: «Egresos con motivo (%)» = 50 (1 de 2 egresos de noviembre), «Con sexo (%)» = 50 (1 de 2 ingresos) y «Episodios sin labs (n)» = 2; las tres van al final de la pestaña",
@@ -2971,8 +2971,8 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
   PF.push(pac("fb", "000930", "PRUEBA FICTICIA BORRADA", { "Motivo de egreso": "BORRADO EN BD" }), pac("fs", "000931", "PRUEBA FICTICIA SIN MOTIVO", { "Motivo de egreso": SIN }));
   const anF = sb.regAnalisis({ "Pacientes": PF }, [], [], "2026-12-20", cod), paso = (re) => (anF[AFL].find((x) => re.test(x["Paso"])) || {})["Episodios (n)"];
   const mc = ind(anF, "Mortalidad hospitalaria (desenlace conocido)"), mv = ind(anF, "Mortalidad hospitalaria (desconocidos como vivos)"), bac = ind(anF, "Bacteriemia");
-  check("V19a «= Episodios analizables» (12) es el denominador de «Mortalidad (desenlace conocido)» en Acumulado (1 de 12): el episodio sin fecha de ingreso ya no se resta (3, contados aparte) y la defunción sin ingreso sí está",
-    paso(/^= Episodios analizables/) === 12 && mc && mc["Numerador"] === 1 && mc["Denominador"] === 12 && paso(/^Analizables sin fecha de ingreso/) === 3 && paso(/^− Borrados/) === 1 && paso(/^− Egresados sin desenlace/) === 1 && paso(/^Episodios en el registro/) === 14
+  check("V19a «Episodios analizables» (12) es el denominador de «Mortalidad (desenlace conocido)» en Acumulado (1 de 12): el episodio sin fecha de ingreso ya no se resta (3, contados aparte) y la defunción sin ingreso sí está",
+    paso(/^Episodios analizables/) === 12 && mc && mc["Numerador"] === 1 && mc["Denominador"] === 12 && paso(/^Analizables sin fecha de ingreso/) === 3 && paso(/^− Borrados/) === 1 && paso(/^− Egresados sin desenlace/) === 1 && paso(/^Episodios en el registro/) === 14
     && !anF[AFL].some((x) => /^− Sin fecha de ingreso/.test(x["Paso"])), JSON.stringify(anF[AFL].map((x) => [x["Paso"].slice(0, 30), x["Episodios (n)"]])));
   check("V19b la tarjeta «BORRADO EN BD» que el flujo resta tampoco entra a los denominadores de «todos los egresos»: 13 (los 12 con desenlace + el sin motivo), no 14",
     mv && mv["Denominador"] === 13 && bac && bac["Denominador"] === 13 && mc["Excluidos por dato faltante (n)"] === 1, JSON.stringify([mv, bac]));

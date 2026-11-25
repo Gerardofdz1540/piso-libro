@@ -446,7 +446,7 @@ siempre. Cada columna está definida en «Diccionario de variables».
       que reingresaba entraba de inmediato y el mes reciente salía inflado (hasta 100 %).
     - *Reingreso planeado*: se evalúa por cláusula; nombrar la cirugía previa («PO CIERRE DE ILEOSTOMIA + FUGA») o
       negarla no es planeado, y con una complicación en el diagnóstico del reingreso nunca lo es.
-    - *Flujo de la cohorte* e *Indicadores* usan el mismo universo: «= Episodios analizables» es el denominador de
+    - *Flujo de la cohorte* e *Indicadores* usan el mismo universo: «Episodios analizables» es el denominador de
       «Mortalidad hospitalaria (desenlace conocido)». El episodio sin fecha de ingreso ya no se resta (se cuenta
       aparte) y la tarjeta borrada en la base no entra a ningún denominador.
     - *Cirugía en ≤1 día* y *Estancia posoperatoria* quedan vacías si la cirugía tiene fecha anterior al ingreso.

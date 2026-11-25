@@ -41,7 +41,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.11.24';
+var REGISTRO_VERSION = '2026.11.25';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -3193,7 +3193,7 @@ function regFlujo_(eps, extra) {
   ];
   var quedan = eps.slice(), filas = [['Episodios en el registro', eps.length]];
   pasos.forEach(function (p) { var n = quedan.length; quedan = quedan.filter(function (e) { return !p[1](e); }); filas.push([p[0], n - quedan.length]); });
-  filas.push(['= Episodios analizables (egreso con desenlace conocido)', quedan.length]);
+  filas.push(['Episodios analizables (egreso con desenlace conocido)', quedan.length]);
   filas.push(['Analizables operados', quedan.filter(function (e) { return e['Cirugías (n)'] > 0; }).length]);
   filas.push(['Analizables con laboratorio seriado (2 o más fechas)', quedan.filter(function (e) { return e['Fechas con labs (n)'] >= 2; }).length]);
   filas.push(['Analizables sin fecha de ingreso (cuentan para mortalidad; no tienen estancia)', quedan.filter(function (e) { return e['Fecha de ingreso'] === ''; }).length]);
