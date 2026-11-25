@@ -2005,5 +2005,204 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   }
 }
 
+// ── 31) Altas (.docx) del bucket «altas» → Google Drive (25 nov 2026, v3) ─────────────────────────
+{
+  const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  // Drive simulado: carpetas y archivos en memoria; registra cada carpeta creada.
+  const makeDrive = () => {
+    let n = 0;
+    const d = { created: [], files: [], byId: {} };
+    const iter = (arr) => { let i = 0; return { hasNext: () => i < arr.length, next: () => arr[i++] }; };
+    const mkFolder = (name) => {
+      const id = 'fold' + (++n);
+      const f = {
+        _name: name, _children: [], _files: [], getId: () => id, getName: () => name, isTrashed: () => false,
+        getFoldersByName: (nm) => iter(f._children.filter((c) => c._name === nm)),
+        getFilesByName: (nm) => iter(f._files.filter((x) => x._name === nm)),
+        createFolder: (nm) => { const c = mkFolder(nm); f._children.push(c); d.created.push(nm); return c; },
+        createFile: (blob) => {
+          if (d.failCreate) throw Object.assign(new Error('cuota FICTICIA'), { name: 'Exception' });
+          const fid = 'file' + (++n); let desc = '';
+          const file = { _name: blob._name, _type: blob._type, _parent: name, getId: () => fid, getUrl: () => 'https://drive.google.com/file/d/' + fid + '/view',
+            setDescription: (x) => { desc = x; return file; }, getDescription: () => desc };
+          f._files.push(file); d.files.push(file); return file;
+        }
+      };
+      d.byId[id] = f; return f;
+    };
+    d.root = mkFolder('Mi unidad');
+    d.api = {
+      getRootFolder: () => d.root,
+      createFolder: (nm) => d.root.createFolder(nm),
+      getFolderById: (id) => { if (!d.byId[id]) throw new Error('no existe'); return d.byId[id]; }
+    };
+    return d;
+  };
+  const blobResp = (code, bytes) => ({
+    getResponseCode: () => code, getContentText: () => '',
+    getBlob: () => { const b = { _name: '', _type: '', getBytes: () => bytes, setName: (x) => { b._name = x; return b; }, setContentType: (x) => { b._type = x; return b; } }; return b; }
+  });
+  const pid = (i) => '00000000-0000-4000-8000-0000000000' + String(10 + i);
+  const fila = (i, extra) => Object.assign({ id: 'alta-' + i, patient_id: pid(i), exp: '26-7000' + i, nombre: 'Paciente Ficticio ' + i,
+    fecha: '2026-11-21', storage_path: pid(i) + '/2026-11-21_26-7000' + i + '_17000000' + i + '.docx', error: null }, extra || {});
+  const correr = (opts) => {
+    const st = { props: opts.props || {} };
+    const drive = opts.drive || makeDrive();
+    const gets = [];
+    st.handler = (m, u) => {
+      if (m === 'GET' && u.startsWith('/rest/v1/altas_docs')) {
+        gets.push(u);
+        if (opts.colaFalla) return { code: 503, body: '' };
+        const lim = Number((u.match(/limit=(\d+)/) || [])[1] || 0);
+        const src = /error=is\.null/.test(u) ? (opts.nuevas || []) : (opts.fallidas || []);
+        return { code: 200, body: src.slice(0, lim) };
+      }
+      return null;
+    };
+    const env = makeSandbox(st);
+    const orig = env.sb.UrlFetchApp.fetch;
+    env.sb.UrlFetchApp.fetch = (url, o) => {
+      const u = url.replace(/^https?:\/\/[^/]+/, '');
+      if (u.startsWith('/storage/v1/object/altas/')) {
+        env.calls.push({ m: 'GET', u, h: (o && o.headers) || {} });
+        const code = opts.descarga ? opts.descarga(u) : 200;
+        return blobResp(code, code === 200 ? [80, 75, 3, 4] : []);
+      }
+      if (u.startsWith('/rest/v1/altas_docs') && ((o && o.method) || '').toUpperCase() === 'PATCH' && opts.patchFalla) {
+        env.calls.push({ m: 'PATCH', u, body: JSON.parse(o.payload) });
+        return { getResponseCode: () => 500, getContentText: () => '' };
+      }
+      return orig(url, o);
+    };
+    env.sb.DriveApp = drive.api;
+    const r = env.sb.pasarAltasADrive_('svc');
+    const patches = env.calls.filter((c) => c.m === 'PATCH' && c.u.startsWith('/rest/v1/altas_docs'));
+    const descargas = env.calls.filter((c) => c.u.startsWith('/storage/v1/object/altas/'));
+    return { r, st, drive, env, patches, descargas, gets };
+  };
+
+  // a) Dos altas del mismo mes: raíz y carpeta del mes se crean UNA vez; nombre; PATCH con drive_url; propiedad guardada.
+  {
+    const x = correr({ nuevas: [fila(1), fila(2)] });
+    const f = x.drive.files;
+    check('T31a dos altas del mismo mes: «Altas · Piso Libro» y «2026-11» se crean una sola vez, en la raíz de Mi unidad; ALTAS_FOLDER_ID queda guardado',
+      JSON.stringify(x.drive.created) === JSON.stringify(['Altas · Piso Libro', '2026-11']) && x.drive.root._children.length === 1
+      && x.st.props.ALTAS_FOLDER_ID === x.drive.root._children[0].getId() && f.length === 2 && f.every((y) => y._parent === '2026-11'),
+      JSON.stringify({ created: x.drive.created, props: x.st.props }));
+    check('T31b nombre del archivo «ALTA <exp> <NOMBRE> <AAAA-MM-DD>.docx», tipo docx y descripción = ruta del objeto',
+      f[0]._name === 'ALTA 26-70001 PACIENTE FICTICIO 1 2026-11-21.docx' && f[0]._type === DOCX && f[0].getDescription() === fila(1).storage_path,
+      JSON.stringify(f.map((y) => y._name)));
+    const p = x.patches;
+    check('T31c PATCH por id (solo si sigue sin drive_file_id) con drive_file_id, drive_url, drive_en y error=null; descarga con la service key',
+      p.length === 2 && p[0].u.includes('id=eq.alta-1') && p[0].u.includes('drive_file_id=is.null') && p[0].body.drive_file_id === f[0].getId()
+      && p[0].body.drive_url === f[0].getUrl() && /^\d{4}-\d{2}-\d{2}T/.test(p[0].body.drive_en) && p[0].body.error === null && 'error' in p[0].body
+      && x.descargas.length === 2 && x.descargas[0].u === '/storage/v1/object/altas/' + fila(1).storage_path && x.descargas[0].h.Authorization === 'Bearer svc'
+      && x.r.subidas === 2 && x.r.errores === 0, JSON.stringify(p));
+    check('T31d el log solo lleva conteos (sin nombres ni expedientes)',
+      x.env.logs.some((l) => /Altas a Drive: 2 subidas, 0 con error, de 2 pendientes/.test(l)) && !x.env.logs.some((l) => /FICTICIO|26-7000|alta-1/i.test(l)), JSON.stringify(x.env.logs));
+    // Segunda corrida con la propiedad ya guardada: no crea la raíz otra vez; un mes nuevo crea solo su carpeta.
+    const y = correr({ nuevas: [fila(3, { fecha: '2026-12-01' })], drive: x.drive, props: x.st.props });
+    check('T31e segunda corrida: reusa la raíz por ALTAS_FOLDER_ID y solo crea «2026-12» (mes según la fecha del alta)',
+      JSON.stringify(y.drive.created) === JSON.stringify(['Altas · Piso Libro', '2026-11', '2026-12']) && y.drive.files[2]._parent === '2026-12'
+      && y.drive.files[2]._name === 'ALTA 26-70003 PACIENTE FICTICIO 3 2026-12-01.docx', JSON.stringify(y.drive.created));
+  }
+
+  // b) Fallos por fila: PATCH error corto y sigue con la siguiente.
+  {
+    const x = correr({ nuevas: [fila(1), fila(2)], descarga: (u) => (u.includes('_26-70001_') ? 404 : 200) });
+    const e = x.patches.find((c) => c.u.includes('id=eq.alta-1'));
+    const ok = x.patches.find((c) => c.u.includes('id=eq.alta-2'));
+    check('T31f descarga 404 → PATCH error «descarga_http_404» (sin datos personales; error permanente: definitiva de una vez, intentos=99) y la siguiente sí sube',
+      !!e && e.body.error === 'descarga_http_404' && e.body.intentos === 99 && /^\d{4}-\d{2}-\d{2}T/.test(e.body.ultimo_intento) && Object.keys(e.body).length === 3 && !!ok && !!ok.body.drive_url && x.drive.files.length === 1 && x.r.errores === 1 && x.r.subidas === 1,
+      JSON.stringify(x.patches));
+    const dr = makeDrive(); dr.failCreate = true;
+    const z = correr({ nuevas: [fila(1), fila(2)], drive: dr });
+    check('T31g Drive lanza error al crear el archivo → PATCH error «drive_Exception» en cada una, sin el mensaje (error pasajero: intentos + 1 y ultimo_intento)',
+      z.patches.length === 2 && z.patches.every((c) => c.body.error === 'drive_Exception' && c.body.intentos === 1 && !!c.body.ultimo_intento && Object.keys(c.body).length === 3), JSON.stringify(z.patches));
+    const r = correr({ nuevas: [fila(1, { storage_path: '../otro/x.docx' })] });
+    check('T31h ruta rara (..) → error «ruta_invalida» sin descargar', r.descargas.length === 0 && r.patches.length === 1 && r.patches[0].body.error === 'ruta_invalida', JSON.stringify(r.patches));
+    // Tope de reintentos (revisión 25 nov 2026): los errores permanentes llegan al tope de una vez; los pasajeros suman 1;
+    // las fallidas solo se piden con intentos < 5. Sin esto una fila rota se descargaba cada 5 min para siempre.
+    const w = correr({ nuevas: [fila(1), fila(2), fila(3)], descarga: (u) => (u.includes('_26-70001_') ? 400 : u.includes('_26-70002_') ? 503 : 401) });
+    const by = (id) => (w.patches.find((c) => c.u.includes('id=eq.' + id)) || {}).body || {};
+    const v = correr({ nuevas: [], fallidas: [fila(4, { id: 'f4', error: 'descarga_http_503', intentos: 3 })], descarga: () => 503 });
+    check('T31p reintentos: descarga 400 (bucket/objeto inexistente) → definitiva (intentos=99, no se vuelve a pedir); 503 y 401 (pasajero o de la llave) → intentos=1; una fallida con 3 → 4; las fallidas se piden con intentos=lt.99 y select con intentos y ultimo_intento',
+      by('alta-1').intentos === 99 && by('alta-2').intentos === 1 && by('alta-3').intentos === 1
+      && v.gets.length === 2 && /error=not\.is\.null&intentos=lt\.99/.test(v.gets[1]) && /select=[^&]*intentos,ultimo_intento,creado_en/.test(v.gets[0]) && v.patches.length === 1 && v.patches[0].body.intentos === 4,
+      JSON.stringify({ p: w.patches.map((c) => c.body), g: v.gets, v: v.patches.map((c) => c.body) }));
+    // Revisión 25 nov 2026 (2.ª vuelta): los pasajeros (Drive, 5xx, 401/403 de la llave) ya no se abandonan por conteo
+    // (antes 5 fallos = 25 min y la fila quedaba perdida): espera creciente desde ultimo_intento y tope de 72 h desde creado.
+    const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+    // 6 corridas seguidas (cada 5 min) con Drive roto: la fila nunca queda definitiva y solo se reintenta cuando toca.
+    const dr6 = makeDrive(); dr6.failCreate = true;
+    let row = fila(1, { creado_en: ago(1) }), intentosHechos = 0, minuto = 0;
+    for (let i = 0; i < 12; i++, minuto += 5) {
+      // la fila como la vería la base en esa corrida (el reloj avanza 5 min por corrida)
+      const corrida = correr({ nuevas: row.error ? [] : [row], fallidas: row.error ? [Object.assign({}, row, { ultimo_intento: row.ultimo_min == null ? null : ago(minuto - row.ultimo_min) })] : [], drive: dr6 });
+      if (corrida.patches.length) { intentosHechos++; row = Object.assign({}, row, corrida.patches[0].body, { ultimo_min: minuto }); }
+    }
+    const toca = (r) => correr({ nuevas: [], fallidas: [r], drive: dr6 }).patches.length;
+    const q1 = toca(fila(2, { error: 'drive_Exception', intentos: 4, ultimo_intento: ago(30), creado_en: ago(60) }));   // espera 40 min → aún no
+    const q2 = toca(fila(2, { error: 'drive_Exception', intentos: 4, ultimo_intento: ago(41), creado_en: ago(60) }));   // ya toca
+    const q3 = toca(fila(2, { error: 'drive_Exception', intentos: 30, ultimo_intento: ago(400), creado_en: ago(60) })); // tope de espera 6 h
+    const vieja = correr({ nuevas: [], fallidas: [fila(3, { error: 'descarga_http_503', intentos: 8, ultimo_intento: ago(400), creado_en: ago(73 * 60) })], descarga: () => 503 });
+    const nueva72 = correr({ nuevas: [fila(5, { creado_en: ago(80 * 60), intentos: 0 })], descarga: () => 401 });
+    check('T31q pasajeros sin abandono por conteo: 12 corridas (1 h) con Drive caído → intentos < 99 y con espera creciente (5, 10, 20… min: 4 intentos, no 12); a los 40 min de espera no toca y a los 41 sí; tras 6 h siempre toca; con >72 h desde creado_en (y ≥3 intentos) queda definitiva; una fila vieja nunca intentada no muere al primer 401',
+      row.intentos > 0 && row.intentos < 99 && intentosHechos === 4 && q1 === 0 && q2 === 1 && q3 === 1
+      && vieja.patches.length === 1 && vieja.patches[0].body.intentos === 99 && nueva72.patches[0].body.intentos === 1,
+      JSON.stringify({ row, intentosHechos, q1, q2, q3, v: vieja.patches.map((c) => c.body), n: nueva72.patches.map((c) => c.body) }));
+  }
+
+  // c) Tope de 10 por corrida, las más viejas primero; las que ya fallaron van después de las nuevas.
+  {
+    const muchas = []; for (let i = 0; i < 14; i++) muchas.push(fila(i));
+    const x = correr({ nuevas: muchas, fallidas: [fila(9, { id: 'vieja', error: 'descarga_http_404' })] });
+    check('T31i tope de 10: 14 nuevas en cola → 10 descargas y 10 PATCH; pide order=creado_en.asc&limit=10 y no consulta las fallidas',
+      x.descargas.length === 10 && x.patches.length === 10 && x.gets.length === 1 && /drive_file_id=is\.null/.test(x.gets[0]) && /order=creado_en\.asc&limit=10/.test(x.gets[0]),
+      JSON.stringify(x.gets));
+    const y = correr({ nuevas: [fila(1), fila(2)], fallidas: [fila(5, { id: 'vieja', error: 'descarga_http_404' })] });
+    check('T31j con 2 nuevas, completa con las que ya fallaron (las que llevan más sin intentarse primero, después de las nuevas) y una que se logra limpia el error',
+      y.gets.length === 2 && /error=not\.is\.null/.test(y.gets[1]) && /order=ultimo_intento\.asc\.nullsfirst&limit=50/.test(y.gets[1]) && y.patches.length === 3 && y.patches[2].u.includes('id=eq.vieja') && y.patches[2].body.error === null,
+      JSON.stringify(y.gets));
+  }
+
+  // d) Idempotencia: el archivo quedó en Drive pero el PATCH falló → la siguiente corrida lo reusa, no lo duplica.
+  {
+    const x = correr({ nuevas: [fila(1)], patchFalla: true });
+    const y = correr({ nuevas: [fila(1)], drive: x.drive, props: x.st.props });
+    check('T31k PATCH falló tras crear el archivo → error «registro_fallo»; la siguiente corrida reusa ese archivo (sin descargar ni duplicar) y lo registra',
+      x.drive.files.length === 1 && x.patches.some((c) => c.body.error === 'registro_fallo')
+      && y.descargas.length === 0 && y.drive.files.length === 1 && y.patches.length === 1 && y.patches[0].body.drive_file_id === x.drive.files[0].getId() && y.r.reusadas === 1,
+      JSON.stringify({ a: x.patches, b: y.patches }));
+  }
+
+  // e) Nunca rompe la sincronización: cola caída, DriveApp roto o ausente, y doSync completo.
+  {
+    const x = correr({ colaFalla: true });
+    check('T31l la cola no se puede leer (HTTP 503) → no lanza, no toca Drive, log sin datos', !!x.r && x.r.errores === 1 && x.drive.created.length === 0
+      && x.env.logs.some((l) => /Altas a Drive: no se pudo leer la cola/.test(l)), JSON.stringify(x.env.logs));
+    const roto = { getRootFolder: () => { throw new Error('sin permiso FICTICIO'); }, createFolder: () => { throw new Error('x'); }, getFolderById: () => { throw new Error('x'); } };
+    let lanzo = false, r2 = null;
+    try { r2 = correr({ nuevas: [fila(1)], drive: { api: roto, files: [], created: [] } }).r; } catch (_) { lanzo = true; }
+    check('T31m DriveApp sin permiso → la fila se marca con error y la función no lanza', !lanzo && !!r2 && r2.errores === 1 && r2.subidas === 0, String(lanzo));
+    const hojaMin = [['CENSO FICTICIO'], ['', 'CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'], ['PISO']]
+      .concat(Array.from({ length: 12 }, (_, i) => ['', '4-' + (10 + i), '26-8' + (1000 + i), 'NOMBRE FICTICIO ' + i, '40', 'DX', 'CG', 'A', 'R', '', '', 'ESTABLE']));
+    const env = makeSandbox({ props: {}, handler: (m, u) => (m === 'GET' && u.startsWith('/rest/v1/altas_docs') ? { code: 200, body: [fila(1)] } : null) });
+    env.sb.DriveApp = undefined;
+    env.sb.readCensoRows_ = () => hojaMin;
+    let llamada = false;
+    const real = env.sb.pasarAltasADrive_;
+    env.sb.pasarAltasADrive_ = (k) => { llamada = true; return real(k); };
+    let err = '', out = null; try { out = env.sb.doSync(); } catch (e) { err = String(e); }
+    check('T31n doSync completo llama pasarAltasADrive_ al final y termina bien aunque DriveApp no exista',
+      !err && !!out && out.capturados === 12 && llamada, err || JSON.stringify(out));
+    const env2 = makeSandbox({ props: {} });
+    env2.sb.readCensoRows_ = () => hojaMin;
+    env2.sb.pasarAltasADrive_ = () => { throw new Error('boom'); };
+    let err2 = ''; try { env2.sb.doSync(); } catch (e) { err2 = String(e); }
+    check('T31o aunque pasarAltasADrive_ lanzara, doSync no se rompe y aún reporta la versión', !err2 && env2.calls.some((c) => c.u.startsWith('/rest/v1/rpc/pl_reportar_version')), err2);
+  }
+}
+
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");
 process.exit(fail ? 1 : 0);

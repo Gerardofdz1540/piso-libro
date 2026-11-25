@@ -2142,3 +2142,22 @@ El tablero, la barra de camas y «Pendientes» siguen el orden de la hoja del ce
 (QX) → UCIA → ONCOLOGÍA / GINECOLOGÍA (2-xxx) → PEDIATRÍA (UCIP) → MEDICINA INTERNA (4-xxx) → el resto (EXT…).
 Antes UCIP iba junto a las UCI y QX al final. Manda la sección que trae el censo (`patients.seccion`); si la cama se
 agregó en la app sin sección, se deduce de la cama. Prueba: `app_reacomodo` R14.
+
+## 📄 Nota de alta en Word con copia a Drive (25 de noviembre de 2026, 2026.11.25-2)
+
+Cada tarjeta tiene **📄 Nota alta** (en la vista simple, solo 📄). Abre el machote del servicio ya llenado con la
+ficha: datos del paciente, DX de ingreso y de egreso, cirugías (caja de Cirugías o, si está vacía, lo que dice la
+Cronología), «Durante su estancia» con los eventos de la Cronología, medicamentos de las indicaciones, retiro de puntos
+y cita a la consulta externa con el adscrito con el que está censado. Todo se puede corregir antes de generarlo.
+
+- **⬇️ Descargar** baja el Word en el dispositivo. **☁️ Guardar en Drive** lo baja y además lo sube al bucket privado
+  «altas» de Supabase; `censo-sync.gs` (cada 5 min) lo copia a Drive en «Altas · Piso Libro / AAAA-MM» y la ventana
+  muestra «Abrir en Drive». Sin red queda en una cola del iPad (máx. 7 días) y se sube solo al volver la red.
+- **Borrador:** lo que se edita se guarda en la nota del paciente (se ve en los otros iPads). Si la tarjeta cambió
+  desde el borrador, la ventana lo avisa; «↻ Rehacer» lo vuelve a armar desde la tarjeta.
+- **Costo:** ninguno extra; el Word se arma en el dispositivo y el almacenamiento entra en el plan Pro.
+- **Instalación (una vez):** `scripts/supabase_altas.sql` en Supabase (bucket «altas» + tabla `altas_docs`), y pegar
+  `censo-sync.gs` 2026.11.25.3 en «PisoLibro – Sync Censo» y correr **doSyncScheduled** a mano para aceptar el permiso
+  de Drive. Si una alta se queda con error definitivo, se vuelve a pedir así (SQL Editor):
+  `update altas_docs set intentos = 0, ultimo_intento = null, error = null where id = '<id>';`
+- Pruebas: `app_alta` (58), `censo-sync.test.js` T31a–q.

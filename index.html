@@ -7943,6 +7943,8 @@ function plExportBackup() {
       try { if (_supa) await _supa.auth.signOut({ scope: "local" }); } catch (e) { console.warn("signOut:", e); }
       // Copia local de las descargas por diferencia (labs, notas, imagen): la siguiente sesión baja todo de nuevo.
       try { await _dcBorrar(); } catch (_) {}
+      // Cola de notas de alta (el .docx con datos personales, en un iPad compartido): no se queda para la siguiente cuenta.
+      try { localStorage.removeItem("pl_altas_cola_v1"); } catch (_) {}
       // onAuthStateChange (SIGNED_OUT) muestra el overlay; recargamos para limpiar estado in-memory de la SPA.
       location.reload();
     }
@@ -12270,6 +12272,17 @@ function plExportBackup() {
         if (Object.keys(rd).length) { Object.keys(rd).forEach(function (k) { delete rd[k]; }); localStorage.removeItem("pl_redo_v1"); cut = true; }
         if (cut) { _undoSave(); freed = true; }
       } catch (_) {}
+      // 6) Cola de notas de alta (pl_altas_cola_v1, el .docx en base64): se queda solo la más reciente; las demás ya se
+      //    descargaron en el dispositivo al generarlas. Se avisa.
+      try {
+        const q = JSON.parse(localStorage.getItem("pl_altas_cola_v1") || "[]");
+        if (Array.isArray(q) && q.length > 1) {
+          q.sort(function (a, b) { return (Number(b && b.ts) || 0) - (Number(a && a.ts) || 0); });
+          localStorage.setItem("pl_altas_cola_v1", JSON.stringify(q.slice(0, 1)));
+          freed = true;
+          try { if (typeof _plToast === "function") _plToast("⚠️ Sin espacio en este iPad: se descartaron " + (q.length - 1) + " notas de alta viejas de la cola (sin subir a Drive)", "#b45309", 8000); } catch (_) {}
+        }
+      } catch (_) { try { localStorage.removeItem("pl_altas_cola_v1"); freed = true; } catch (__) {} }
       return freed;
     }
 
@@ -20528,6 +20541,7 @@ function plExportBackup() {
         + '<button type="button" class="ff2-rb" onclick="openEditModal(\'' + k + '\')"><span>✏️</span>Editar</button>'
         + '<button type="button" class="ff2-rb" onclick="openReminderModal(\'' + k + '\')"><span>🔔</span>Record.</button>'
         + '<button type="button" class="ff2-rb ff2-rb-danger" onclick="openConfirm(\'' + k + '\')"><span>🚪</span>Alta</button>'
+        + '<button type="button" class="ff2-rb" onclick="openAltaDoc(\'' + k + '\')" data-testid="alta-doc" title="Nota de alta (Word) y guardar en Drive"><span>📄</span>Nota alta</button>'
         + '</div>';
 
       out += '</div>';
@@ -22142,6 +22156,8 @@ function plExportBackup() {
           ${renderUndoBtn(k)}
           <button class="icon-btn has-lbl" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar paciente">✏️<span class="icon-lbl">Editar</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(139,92,246,.45)" data-inkkey="${k}" onclick="openInkpad(this.dataset.inkkey)" title="Escribir a mano con stylus (Apple Pencil, S Pen, etc.) y transcribir con IA">✍️<span class="icon-lbl">Escribir</span></button>
+          <!-- 📄 «Nota alta» (documento) lejos de 🚪 (egresar): con la misma etiqueta y juntos se confundían en iPad (revisión 25 nov 2026) -->
+          <button class="icon-btn has-lbl" style="background:rgba(21,128,61,.5)" data-altadockey="${k}" onclick="openAltaDoc(this.dataset.altadockey)" data-testid="alta-doc" title="Nota de alta: se arma sola con la tarjeta (Word) y se guarda en Drive">📄<span class="icon-lbl">Nota alta</span></button>
           <button class="icon-btn has-lbl" style="background:rgba(245,158,11,.5)" data-remkey="${k}" onclick="openReminderModal(this.dataset.remkey)" title="Programar recordatorio (reposición K, gasometría a las 18h, etc.)">🔔<span class="icon-lbl">Recordar</span></button>
           <button class="icon-btn has-lbl danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪<span class="icon-lbl">Alta</span></button>
           <!-- Resto de acciones en "⋯ Más": 12 iconos en dos filas se tocaban por error en iPad -->
@@ -22350,6 +22366,8 @@ function plExportBackup() {
         ${renderCruceBadge(nd, k)}
         <button class="icon-btn" data-svckey="${k}" onclick="toggleSvcMine(this.dataset.svckey)" title="Es de mi servicio (expandir + buscar labs)">🩺</button>
         <button class="icon-btn" data-fockey="${k}" onclick="enterFocus(this.dataset.fockey)" title="Pantalla completa">⛶</button>
+        <!-- 📄 sin etiqueta como los demás (no crece el encabezado) y separado de 🚪 por ✏️ -->
+        <button class="icon-btn" data-altadockey="${k}" onclick="openAltaDoc(this.dataset.altadockey)" data-testid="alta-doc" title="Nota de alta (Word) y guardar en Drive" aria-label="Nota de alta">📄</button>
         <button class="icon-btn" data-editkey="${k}" onclick="openEditModal(this.dataset.editkey)" title="Editar">✏️</button>
         <button class="icon-btn danger" data-confirmkey="${k}" onclick="openConfirm(this.dataset.confirmkey)" title="Dar de alta">🚪</button>
       </div>
@@ -27337,6 +27355,966 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
 
 
+    // ═══ 📄 NOTA DE ALTA AUTOMÁTICA + DRIVE (25 nov 2026, pedido de Gera: «un botón en cada paciente para que se genere el
+    // alta automáticamente y se ponga en el Drive; con el diagnóstico actualizado, su cronología…, los medicamentos que pide
+    // y que marque cita a la consulta externa del doctor con el que está censado») ═══════════════════════════════════════
+    // · Ventana «Nota de alta» con TODOS los campos del formato del hospital (NOTA DE ALTA O EGRESO HOSPITALARIO), armados
+    //   con la tarjeta SIN IA (sin costo): DX de ingreso (el DX sin los «+ PO …») y de egreso (el DX actual), antecedentes
+    //   (APP), narrativa con las cirugías y la Cronología condensada, cita a la consulta externa con el adscrito del censo,
+    //   medicamentos de egreso con posología, recomendaciones, pronóstico, motivo y firmas. Todo editable.
+    // · El borrador vive en checklist.alta_borrador (se guarda y sincroniza como cualquier caja: otro iPad lo ve) y la CURP,
+    //   si se llena, en checklist.curp para la próxima.
+    // · «⬇️ Descargar Word» arma el .docx con la librería docx (vendor/) y el encabezado vendor/alta-encabezado.png.
+    //   «☁️ Guardar en Drive» además lo sube al bucket privado «altas» de Supabase (<patient_id>/<AAAA-MM-DD>_<exp>_<ms>.docx)
+    //   y registra la fila en altas_docs; apps-script/censo-sync.gs (cada 5 min) lo copia al Drive («Altas · Piso Libro» /
+    //   «AAAA-MM») y escribe drive_url. Sin red el Word se descarga igual y queda en cola en este iPad (localStorage, con
+    //   tope de tamaño) hasta que vuelva la red. Cada elemento lleva la cuenta (myUserId) y caduca (7 días / 20 intentos);
+    //   los errores permanentes no se reintentan solos; logout() y lsFreeSpace() la vacían/recortan.
+    // · El borrador solo se escribe si se editó algo en la ventana; guarda la huella del prellenado para avisar al reabrir
+    //   si la tarjeta cambió.
+    const ALTA_BUCKET = "altas";
+    const ALTA_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const ALTA_COLA_KEY = "pl_altas_cola_v1";
+    const ALTA_COLA_MAX_ITEM = 1000000;    // bytes de un .docx (con el encabezado pesa ~130 KB)
+    const ALTA_COLA_MAX_TOTAL = 1500000;   // base64 de toda la cola (~8 altas): localStorage tiene ~5 MB y es de notas y outbox
+    const ALTA_COLA_MAX_DIAS = 7;          // caducidad de cada elemento (el .docx lleva datos personales en un iPad compartido)
+    const ALTA_COLA_MAX_INTENTOS = 20;     // errores no de red (con espera creciente) antes de descartarlo con aviso
+    const ALTA_COLA_SIN_PACIENTE_MS = 24 * 3600000;   // sin patient_id y el paciente ya no está en el censo
+    const ALTA_SERVICIOS = {
+      CG: "CIRUGÍA GENERAL", CCR: "CIRUGÍA DE COLON Y RECTO", CT: "CIRUGÍA DE TÓRAX", "CX DE TÓRAX": "CIRUGÍA DE TÓRAX",
+      CV: "CIRUGÍA VASCULAR", URO: "UROLOGÍA", NCX: "NEUROCIRUGÍA", CPR: "CIRUGÍA PLÁSTICA Y RECONSTRUCTIVA",
+      CMF: "CIRUGÍA MAXILOFACIAL", CP: "CIRUGÍA PEDIÁTRICA", TYO: "TRAUMATOLOGÍA Y ORTOPEDIA", GYO: "GINECOLOGÍA Y OBSTETRICIA",
+      "ONCOCIRUGÍA": "CIRUGÍA ONCOLÓGICA", COLUMNA: "CIRUGÍA DE COLUMNA", ENDOS: "ENDOSCOPIA"
+    };
+    // Medicamentos frecuentes de egreso con su posología por defecto (los del formato y otros comunes de cirugía).
+    // atb: antibiótico que se puede seguir por vía oral (si la tarjeta lo tiene activo, se propone).
+    const ALTA_MEDS = [
+      { id: "cefalexina", atb: true, re: /CEFALEXINA/, t: "CEFALEXINA TABLETAS 500 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS POR 7 DÍAS" },
+      { id: "paracetamol", re: /PARACETAMOL(?!\s*(\+|\/|CON)\s*TRAMADOL)/, t: "PARACETAMOL TABLETAS 500 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS POR 4 DÍAS" },
+      { id: "diclofenaco", re: /DICLOFENACO/, t: "DICLOFENACO TABLETAS 100 MG. TOMAR 1 TABLETA VÍA ORAL CADA 12 HORAS POR 4 DÍAS" },
+      { id: "paratram", re: /TRAMADOL/, t: "PARACETAMOL + TRAMADOL TABLETAS 325/37.5 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS POR 4 DÍAS EN CASO DE DOLOR" },
+      { id: "ketorolaco", re: /KETOROLACO/, t: "KETOROLACO TABLETAS 10 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS POR 3 DÍAS EN CASO DE DOLOR" },
+      { id: "sulfadiazina", re: /SULFADIAZINA/, t: "SULFADIAZINA DE PLATA CREMA 1%. COLOCAR UNA CAPA DELGADA SOBRE LA HERIDA CADA 24 HORAS" },
+      { id: "omeprazol", re: /OMEPRAZOL/, t: "OMEPRAZOL CÁPSULAS 20 MG. TOMAR 1 CÁPSULA VÍA ORAL CADA 24 HORAS EN AYUNO POR 14 DÍAS" },
+      { id: "ciprofloxacino", atb: true, re: /CIPROFLOXACINO|\bCIPRO\b/, t: "CIPROFLOXACINO TABLETAS 500 MG. TOMAR 1 TABLETA VÍA ORAL CADA 12 HORAS POR 7 DÍAS" },
+      { id: "levofloxacino", atb: true, re: /LEVOFLOXACINO/, t: "LEVOFLOXACINO TABLETAS 500 MG. TOMAR 1 TABLETA VÍA ORAL CADA 24 HORAS POR 7 DÍAS" },
+      { id: "metronidazol", atb: true, re: /METRONIDAZOL/, t: "METRONIDAZOL TABLETAS 500 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS POR 7 DÍAS" },
+      { id: "amoxiclav", atb: true, re: /AMOXICILINA|CLAVULAN/, t: "AMOXICILINA/ÁCIDO CLAVULÁNICO TABLETAS 875/125 MG. TOMAR 1 TABLETA VÍA ORAL CADA 12 HORAS POR 7 DÍAS" },
+      { id: "tmpsmx", atb: true, re: /TRIMETOPRIM|SULFAMETOXAZOL|\bTMP/, t: "TRIMETOPRIMA/SULFAMETOXAZOL TABLETAS 160/800 MG. TOMAR 1 TABLETA VÍA ORAL CADA 12 HORAS POR 7 DÍAS" },
+      { id: "clindamicina", atb: true, re: /CLINDAMICINA/, t: "CLINDAMICINA CÁPSULAS 300 MG. TOMAR 1 CÁPSULA VÍA ORAL CADA 8 HORAS POR 7 DÍAS" },
+      { id: "doxiciclina", atb: true, re: /DOXICICLINA/, t: "DOXICICLINA TABLETAS 100 MG. TOMAR 1 TABLETA VÍA ORAL CADA 12 HORAS POR 7 DÍAS" },
+      { id: "nitrofurantoina", atb: true, re: /NITROFURANTOINA/, t: "NITROFURANTOÍNA CÁPSULAS 100 MG. TOMAR 1 CÁPSULA VÍA ORAL CADA 12 HORAS POR 7 DÍAS" },
+      { id: "enoxaparina", re: /ENOXAPARINA/, t: "ENOXAPARINA 40 MG. APLICAR 1 JERINGA SUBCUTÁNEA CADA 24 HORAS POR 10 DÍAS" },
+      { id: "butilhioscina", re: /BUTILHIOSCINA|HIOSCINA/, t: "BUTILHIOSCINA TABLETAS 10 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS EN CASO DE DOLOR TIPO CÓLICO" },
+      { id: "metoclopramida", re: /METOCLOPRAMIDA/, t: "METOCLOPRAMIDA TABLETAS 10 MG. TOMAR 1 TABLETA VÍA ORAL CADA 8 HORAS EN CASO DE NÁUSEA O VÓMITO" },
+      { id: "senosidos", re: /SENOSIDOS|SENOS[IÍ]DOS/, t: "SENÓSIDOS A-B TABLETAS 8.6 MG. TOMAR 2 TABLETAS VÍA ORAL CADA 24 HORAS POR LA NOCHE POR 7 DÍAS" }
+    ];
+    const ALTA_MOTIVOS = ["MEJORÍA", "PASE A OTRO HOSPITAL", "DEFUNCIÓN", "ALTA VOLUNTARIA"];
+    const ALTA_DECADAS = ["PRIMERA", "SEGUNDA", "TERCERA", "CUARTA", "QUINTA", "SEXTA", "SÉPTIMA", "OCTAVA", "NOVENA", "DÉCIMA", "UNDÉCIMA"];
+    // Sexo por el nombre de pila cuando la tarjeta no lo trae (revisión 25 nov 2026): el censo escribe «APELLIDO APELLIDO
+    // NOMBRE(S)», así que el nombre de pila son las ÚLTIMAS palabras. Diccionario y reglas copiados (adaptados) de
+    // regSexoDeNombre (apps-script/registro-pacientes.gs): nunca se adivina por la terminación; ambiguos (GUADALUPE…)
+    // los decide el otro nombre; si hay un nombre de pila del otro sexo o no se reconoce, queda vacío y el médico elige.
+    const ALTA_NOMBRES_M = new Set(("AARON ABDIEL ABEL ABELARDO ABRAHAM ABUNDIO ADALBERTO ADAN ADOLFO ADRIAN AGAPITO AGUSTIN ALAN ALBERTO ALDO ALEJANDRO " +
+      "ALEJO ALFONSO ALFREDO ALONSO ALVARO AMADO AMADOR AMBROSIO ANASTACIO ANDRES ANGEL ANICETO ANSELMO ANTONIO APOLINAR " +
+      "ARCADIO ARIEL ARMANDO ARNOLDO ARNULFO ARTURO AUDENCIO AURELIO AUSENCIO AXEL BALDOMERO BALTAZAR BARTOLO BARTOLOME " +
+      "BENIGNO BENITO BENJAMIN BERNABE BERNARDINO BERNARDO BONIFACIO BRAULIO BRAYAN BRIAN BRUNO CAMILO CANDIDO CARLOS " +
+      "CATARINO CAYETANO CELEDONIO CELESTINO CELSO CESAR CHRISTIAN CIPRIANO CIRILO CLAUDIO CLEMENTE CONSTANTINO CRESCENCIO " +
+      "CRISOFORO CRISPIN CRISTIAN CRISTOBAL DAGOBERTO DAMIAN DANIEL DARIO DAVID DEMETRIO DIDIER DIEGO DIMAS DIONISIO DOMINGO " +
+      "EDGAR EDGARDO EDMUNDO EDUARDO EDWIN EFRAIN EFREN ELADIO ELEAZAR ELIAS ELIGIO ELISEO ELIUD ELPIDIO EMANUEL EMILIANO " +
+      "EMILIO EMMANUEL ENOC ENRIQUE EPIFANIO ERASMO ERICK ERIK ERNESTO ESTANISLAO ESTEBAN EUGENIO EULALIO EUSEBIO EUSTAQUIO " +
+      "EVARISTO EVERARDO EZEQUIEL FABIAN FACUNDO FAUSTINO FAUSTO FEDERICO FELICIANO FELIPE FELIX FERMIN FERNANDO FIDEL " +
+      "FILEMON FILIBERTO FLAVIO FLORENCIO FLORENTINO FORTINO FRANCISCO FROYLAN FRUMENCIO GABINO GABRIEL GAEL GASPAR GENARO " +
+      "GERARDO GERMAN GILBERTO GONZALO GREGORIO GUILLERMO GUSTAVO HECTOR HERIBERTO HERMENEGILDO HERMILO HERNAN HILARIO " +
+      "HIPOLITO HOMERO HORACIO HUGO HUMBERTO IGNACIO ISAAC ISAIAS ISIDRO ISMAEL ISRAEL IVAN JACINTO JACOBO JAIME JAVIER " +
+      "JERONIMO JESUS JOAQUIN JOEL JONATHAN JONATAN JORGE JOSE JOSUE JUAN JULIAN JULIO JUSTINO JUSTO JUVENAL JUVENTINO KEVIN " +
+      "LADISLAO LAURO LAZARO LEANDRO LEOBARDO LEON LEONARDO LEONCIO LEONEL LEOPOLDO LIBORIO LINO LORENZO LUCAS LUCIANO LUCIO " +
+      "LUIS MACARIO MAGDALENO MANUEL MARCELINO MARCELO MARCIAL MARCO MARCOS MARGARITO MARIANO MARIO MARTIN MATEO MATIAS " +
+      "MAURICIO MAURO MAXIMILIANO MAXIMINO MAXIMO MELCHOR MELQUIADES MIGUEL MISAEL MODESTO MOISES NAHUM NARCISO NATALIO " +
+      "NAZARIO NEFTALI NESTOR NICANOR NICOLAS NOE NORBERTO OCTAVIO ODILON OLEGARIO OMAR ONESIMO ORLANDO OSCAR OSVALDO " +
+      "OSWALDO PABLO PANFILO PASCUAL PATRICIO PEDRO PLACIDO PORFIRIO PRIMITIVO PRISCILIANO PRUDENCIO RAFAEL RAMIRO RAMON " +
+      "RAUL RAYMUNDO REINALDO REMIGIO RENE REYMUNDO REYNALDO RICARDO RIGOBERTO ROBERTO RODOLFO RODRIGO ROGELIO ROLANDO ROMAN " +
+      "ROMEO ROMUALDO RUBEN RUFINO SABINO SALOMON SALVADOR SAMUEL SANTIAGO SANTOS SAUL SEBASTIAN SERAFIN SERGIO SEVERIANO " +
+      "SEVERO SILVESTRE SIMON TEODORO TEOFILO TIBURCIO TIMOTEO TOMAS TRANQUILINO UBALDO ULISES URIEL VALENTIN VENANCIO " +
+      "VICENTE VICTOR VIRGILIO WENCESLAO WILFRIDO WILLIAM ZACARIAS ZEFERINO ZENON").split(" "));
+    const ALTA_NOMBRES_F = new Set(("ABIGAIL ADELA ADELAIDA ADELINA ADRIANA AGUSTINA ALBA ALEIDA ALEJANDRA ALICIA ALMA AMALIA AMELIA AMPARO ANA ANABEL " +
+      "ANAHI ANDREA ANGELA ANGELES ANGELICA ANGELINA ANTONIA ARACELI ARCELIA ARELI ARMIDA ASUNCION AURORA AZUCENA BEATRIZ " +
+      "BENITA BERENICE BERTA BERTHA BLANCA BRENDA BRISA CANDELARIA CARMEN CAROLINA CATALINA CECILIA CELIA CELINA CINTHIA " +
+      "CITLALI CLARA CLAUDIA CONCEPCION CONSTANZA CONSUELO CORINA CRISTINA DALIA DAMARIS DANIELA DELFINA DELIA DIANA DOLORES " +
+      "DOMINGA DORA DULCE EDITH ELBA ELENA ELIA ELISA ELIZABETH ELODIA ELOISA ELSA ELVA ELVIRA EMILIA EMMA ENRIQUETA " +
+      "EPIFANIA ERIKA ESMERALDA ESPERANZA ESTEFANIA ESTELA ESTHER EUGENIA EVA EVANGELINA EVELYN FABIOLA FATIMA FAUSTINA " +
+      "FELIPA FERNANDA FLOR FLORENCIA FRANCISCA FRIDA GABRIELA GENOVEVA GEORGINA GLADYS GLORIA GRACIELA GRISELDA GUILLERMINA " +
+      "HERLINDA HERMELINDA HERMINIA HILDA HORTENSIA IGNACIA IMELDA INES IRENE IRIS IRMA ISABEL ISELA ITZEL IVETTE IVONNE " +
+      "JACINTA JACQUELINE JANET JANETH JAZMIN JESSICA JOSEFA JOSEFINA JOVITA JUANA JUDITH JULIA JULIETA KAREN KARINA KARLA " +
+      "KENIA LAURA LEONOR LETICIA LIBRADA LIDIA LILIA LILIANA LIZBETH LIZETH LORENA LORENZA LOURDES LUCERO LUCIA LUCINA " +
+      "LUISA LUZ MACRINA MAGALI MAGALY MAGDALENA MANUELA MARCELA MARGARITA MARIA MARIANA MARIBEL MARICELA MARINA MARISELA " +
+      "MARISOL MARLEN MARLENE MARTA MARTHA MATILDE MAYRA MELISSA MERCEDES MICAELA MINERVA MIREYA MIRIAM MIRNA MODESTA MONICA " +
+      "NANCY NATALIA NAYELI NELLY NICOLASA NOEMI NOHEMI NORA NORMA OBDULIA ODILIA OFELIA OLGA OLIVA OLIVIA OTILIA PALOMA " +
+      "PAOLA PASCUALA PATRICIA PAULA PAULINA PERLA PETRA PIEDAD PILAR PRISCILA RAFAELA RAMONA RAQUEL REBECA REFUGIA REGINA " +
+      "REINA REMEDIOS REYNA RITA ROBERTA ROCIO ROSA ROSALBA ROSALIA ROSALINDA ROSAURA ROXANA RUTH SABINA SAMANTHA SANDRA " +
+      "SARA SELENE SERAFINA SILVIA SIMONA SOCORRO SOFIA SOLEDAD SONIA SUSANA TANIA TEODORA TERESA TERESITA TOMASA VALERIA " +
+      "VANESSA VERONICA VICTORIA VIOLETA VIRGINIA VIVIANA XIMENA XOCHITL YADIRA YAZMIN YESENIA YESICA YOLANDA ZAIRA ZOILA " +
+      "ZULEMA").split(" "));
+    const ALTA_NOMBRES_AMBIGUOS = new Set("GUADALUPE ROSARIO TRINIDAD REFUGIO CRUZ NATIVIDAD MERCED PAZ ASCENCION SACRAMENTO VENTURA ALEXIS SALOME".split(" "));
+    const ALTA_NOMBRES_ABREV = { MA: "MARIA", GPE: "GUADALUPE", FCO: "FRANCISCO", FCA: "FRANCISCA", JSE: "JOSE", ANT: "ANTONIO" };
+    const ALTA_PARTICULAS = { DE: 1, DEL: 1, LA: 1, LAS: 1, LOS: 1, Y: 1 };
+    const ALTA_SIN_NOMBRE = /^(DESCON[A-Z]*|NN|RN|RECIEN|NACID[OA]|IDENTIF[A-Z]*|IGNORAD[OA]|ANONIM[OA]|PACIENTE|MASCULIN[OA]|FEMENIN[OA]|XX+)$/;
+
+    function _altaUp(s) { return toSafeString(s).replace(/\s+/g, " ").trim().toUpperCase(); }
+    function _altaSinCtl(s) { return toSafeString(s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, ""); }
+    function _altaZ(n) { return String(n).padStart(2, "0"); }
+    function _altaFmt(d) { return (d instanceof Date && !isNaN(d)) ? _altaZ(d.getDate()) + "." + _altaZ(d.getMonth() + 1) + "." + d.getFullYear() : ""; }
+    function _altaIsoDe(d) { return (d instanceof Date && !isNaN(d)) ? d.getFullYear() + "-" + _altaZ(d.getMonth() + 1) + "-" + _altaZ(d.getDate()) : ""; }
+    // «DD.MM.AAAA», «DD/MM/AA», «AAAA-MM-DD» → Date local (Invalid Date si no se reconoce).
+    function _altaFecha(s) { const t = toSafeString(s).trim(); if (!t) return new Date(NaN); return /^\d{4}-\d{2}-\d{2}/.test(t) ? new Date(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8, 10)) : parseDate(t); }
+    function _altaDias(ing, egr) {
+      const a = _altaFecha(ing), b = _altaFecha(egr);
+      if (isNaN(a) || isNaN(b)) return "";
+      return String(Math.max(0, Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000)));
+    }
+    function _altaEspCodigo(esp) { return _altaUp(esp).replace(/\s+/g, ""); }
+    function _altaServicio(esp) { const e = _altaUp(esp); if (!e) return "CIRUGÍA GENERAL"; return ALTA_SERVICIOS[e] || e; }
+    function _altaSexo(p, nd) {
+      const s = getPatientSex(p, nd);
+      if (s === "FEMENINO" || s === "MASCULINO") return s;
+      return _altaSexoDeNombre(p && p.nombre);
+    }
+    // «LOPEZ PEREZ MARIA FERNANDA» → "FEMENINO"; "" si no es concluyente. Unidades como regSexoDeNombre: palabra suelta o
+    // bloque con partícula («DE LA CRUZ» = apellido; «MARIA DEL CARMEN» = parte del nombre). Con 3+ unidades se saltan las
+    // dos primeras (los apellidos); con 2, la primera. Sobre lo que queda: manda el primer nombre de pila (ambiguo → el
+    // siguiente; MARIA/JOSE + nombre del otro sexo = compuesto) y si después aparece uno del otro sexo, vacío.
+    function _altaSexoDeNombre(nombre) {
+      const raw = toSafeString(nombre).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z.\s]/g, " ").replace(/\./g, " ").split(/\s+/)
+        .filter(function (w) { return w && w !== "Y"; }).map(function (w) { return ALTA_NOMBRES_ABREV[w] || w; });
+      if (!raw.length || raw.some(function (w) { return ALTA_SIN_NOMBRE.test(w); })) return "";
+      const u = [];
+      for (let k = 0; k < raw.length; k++) {
+        if (!ALTA_PARTICULAS[raw[k]]) { u.push(raw[k]); continue; }
+        while (k + 1 < raw.length && ALTA_PARTICULAS[raw[k + 1]]) k++;
+        if (k + 1 < raw.length) k++;
+        const prev = u[u.length - 1];
+        if (!(prev === "MARIA" || prev === "JOSE" || prev === "JUAN")) u.push("");   // «DE LA CRUZ» suelto = apellido
+      }
+      const nom = u.slice(u.length >= 3 ? 2 : (u.length === 2 ? 1 : 0));
+      const sx = function (w) { return !w || w.length < 2 ? undefined : ALTA_NOMBRES_AMBIGUOS.has(w) ? "?" : ALTA_NOMBRES_F.has(w) ? "F" : ALTA_NOMBRES_M.has(w) ? "M" : undefined; };
+      if (!nom.length || !nom[0] || nom[0].length < 2) return "";
+      let s = sx(nom[0]), desde = 1;
+      if (!s) return "";
+      if (s === "?") { s = sx(nom[1]); if (s !== "M" && s !== "F") return ""; desde = 2; }
+      else if ((nom[0] === "MARIA" || nom[0] === "JOSE") && (sx(nom[1]) === "M" || sx(nom[1]) === "F")) desde = 2;
+      for (let j = desde; j < nom.length; j++) { const o = sx(nom[j]); if ((o === "M" || o === "F") && o !== s) return ""; }
+      return s === "F" ? "FEMENINO" : "MASCULINO";
+    }
+    // Edad en meses, semanas o días (lactantes, CIRUGÍA PEDIÁTRICA): se conserva con su unidad y no se le pega « AÑOS».
+    function _altaEdadSinAnios(edad) { return /\b(MES|MESES|M|SEM|SEMANAS?|D|DIAS?|DÍAS?)\b\.?/i.test(toSafeString(edad).replace(/^\s*\d+\s*/, " ")); }
+    function _altaDecada(edad) {
+      if (_altaEdadSinAnios(edad) && /\d/.test(toSafeString(edad))) return ALTA_DECADAS[0];
+      const n = parseInt(toSafeString(edad), 10);
+      if (!Number.isFinite(n) || n < 0) return "__";
+      return ALTA_DECADAS[Math.min(Math.floor(n / 10), ALTA_DECADAS.length - 1)];
+    }
+    // «Dr. Pérez», «PEREZ R2» → { nombre: "PEREZ", grado: "R2", dra: false }; «Dra. Hernández» → dra: true (se conserva
+    // el prefijo: «CON LA DRA. HERNÁNDEZ», firma «DRA HERNÁNDEZ…»).
+    function _altaDoctor(s) {
+      const u = _altaUp(s), dra = /^DRA\b/.test(u);
+      let t = u.replace(/^(DRA?\.?\s+)+/, "");
+      let grado = ""; const m = /\bR\s?([1-6])\b/.exec(t);
+      if (m) { grado = "R" + m[1]; t = t.replace(m[0], " ").replace(/\s+/g, " ").trim(); }
+      return { nombre: t, grado: grado, dra: dra };
+    }
+    // Comorbilidades que van en antecedentes, no en el motivo de ingreso («… + DM2 + HAS»).
+    const ALTA_COMORB = /^(DM ?(TIPO ?)?[12I]*|DIABETES( MELLITUS)?( TIPO ?[12])?|HAS|HTA|HAS ?SISTEMICA|HIPERTENSION( ARTERIAL)?( SISTEMICA)?|ERC|IRC|ENFERMEDAD RENAL CRONICA|EPOC|OBESIDAD|SOBREPESO|HIPOTIROIDISMO|DISLIPIDEMIA|ASMA|VIH|TABAQUISMO|ALCOHOLISMO|CARDIOPATIA( ISQUEMICA)?)\b/;
+    // DX de ingreso: el DX sin lo que pasó después (segmentos «+ PO …», «- POP …», «S/P …», también «… PO …», «. PO»,
+    // «/ PO», «(PO …)») ni las comorbilidades. Heurística simple: es editable.
+    function _altaDxIngreso(dx) {
+      const MARCA = /^\s*\(?\s*(PO|POP|P\.\s?O\.?|POSTOPERAD[OA]|POSTQUIR[UÚ]RGIC[OA]|POST ?QX|PQX|S\/P|OPERAD[OA])\b/i;
+      let segs = toSafeString(dx).split(/\s*(?:\+|;|\n|\/\/)\s*/).map(function (s) {
+        return s.replace(/(?:\s*[-–—,(.\/]\s*|\s+)(PO|POP|P\.\s?O\.?|POSTOPERAD[OA]|POSTQUIR[UÚ]RGIC[OA]|S\/P)\b.*$/i, "").replace(/[\s.,;:(\/-]+$/, "").trim();
+      }).filter(function (s) { return s && !MARCA.test(s); });
+      // El primer segmento (el motivo del ingreso) se queda siempre: «OBESIDAD MÓRBIDA + PO MANGA GÁSTRICA».
+      segs = segs.filter(function (s, i) { return i === 0 || !ALTA_COMORB.test(_cxNorm(s).trim()); });
+      return _altaUp(segs.join(" + ")) || _altaUp(dx);
+    }
+    // Cirugías del internamiento, de la más vieja a la más reciente: las de la caja de Cirugías y, si está vacía, las que
+    // marcan el DX («PO LAPE 25/10») o la Cronología («pasa a quirófano para…»), con las mismas reglas que 🔎 _cxDetectadas.
+    function _altaCirugias(k, nd) {
+      const ck = (nd && nd.checklist) || {};
+      let list = cirugiasOrdenadas(ck).filter(function (c) { return toSafeString(c.procedimiento).trim() || c.fecha; }).map(function (c) {
+        return { fecha: /^\d{4}-\d{2}-\d{2}$/.test(c.fecha || "") ? c.fecha : "", proc: _altaUp(c.procedimiento), hallazgos: _altaUp(c.hallazgos), inferida: false };
+      });
+      if (!list.length) {
+        try {
+          // _cxDetectadas lee la Cronología como nd.cronologia; aquí se le pasa la caja real (nd.entrega).
+          list = _cxDetectadas(k, Object.assign({}, nd, { cronologia: toSafeString(nd && nd.entrega) })).map(function (x) {
+            // «colecistectomía laparoscópica, hallazgos vesícula Parkland 3» → procedimiento y hallazgos por separado.
+            const pr = _altaUp(x.proc || (x.grupo && x.grupo !== "Cirugía" ? x.grupo : ""));
+            const mh = /[,;.]?\s*\b(?:CON )?HALLAZGOS?\s*:?\s*(DE\s+)?/.exec(pr);
+            // src: el renglón de la Cronología del que salió (ese renglón no se repite en «Durante su estancia»).
+            return { fecha: x.fecha || "", proc: (mh ? pr.slice(0, mh.index) : pr).replace(/[\s.,;:]+$/, ""), hallazgos: mh ? pr.slice(mh.index + mh[0].length).replace(/[\s.,;:]+$/, "") : "", inferida: true, src: x.fuente === "Cronología" ? x.texto : "" };
+          });
+        } catch (e) { safeLog("_altaCirugias:", e); list = []; }
+      }
+      return list.sort(function (a, b) { if (a.fecha && b.fecha) return a.fecha.localeCompare(b.fecha); if (a.fecha) return -1; if (b.fecha) return 1; return 0; });
+    }
+    // Renglones con fecha de la 🕓 Cronología, condensados: del más viejo al más reciente, sin firmas, sin repetir, agrupados
+    // por día. Tope de largo: si no cabe todo se quedan los días más recientes.
+    // cx: las cirugías ya narradas en su párrafo; solo se quita el renglón que narra ESA MISMA cirugía (revisión 25 nov 2026:
+    // antes se iba todo «se realiza…» a ±1 día de la cirugía —TAC, transfusión, la relaparotomía del día siguiente—).
+    // Misma = salió de ese renglón (cirugía inferida de la Cronología), o mismo día (las dos con fecha) y mismo procedimiento
+    // (grupo de _cxGrupo o el texto del procedimiento), o un «pasa a quirófano» a secas ese día. Nunca por un «se realiza»
+    // genérico ni por una cirugía sin fecha; reintervenciones (otro procedimiento, otro día, «re-») se quedan.
+    function _altaGruposCx(s) {
+      const g = CX_DET_GRUPOS.filter(function (x) { return x[1].test(s); }).map(function (x) { return x[0]; });
+      return g.indexOf("Relaparotomía") >= 0 ? g.filter(function (x) { return x !== "Laparotomía exploradora"; }) : g;
+    }
+    function _altaMismaCx(c, e) {
+      const an = function (t) { return _cxNorm(t).replace(/[^A-Z0-9]+/g, " ").trim(); };
+      const s = _cxNorm(e.text), sl = an(e.text);
+      // El renglón de origen de una cirugía inferida, solo el MISMO día: _cxDetectadas junta en una sola cirugía los
+      // quirófanos a ±2 días, y la reintervención de otro día (mismo texto) debe seguir en «Durante su estancia».
+      if (c.src && sl.length >= 8 && c.fecha && e.fecha && _cxDias(c.fecha, e.fecha) === 0 && an(c.src).indexOf(sl) >= 0) return true;
+      if (!CX_DET_HECHO.test(s) || CX_DET_PLAN.test(s)) return false;
+      if (!c.fecha || !e.fecha || _cxDias(c.fecha, e.fecha) !== 0) return false;
+      const re = /\bRE ?(INTERVEN|OPERA|EXPLORA|LAPE)|RELAPAROTOM|SEGUND[OA] (TIEMPO|CIRUGIA|INTERVENCION)|NUEVAMENTE/;
+      if (re.test(s) && !re.test(_cxNorm(c.proc))) return false;
+      const gl = _altaGruposCx(s), gc = _altaGruposCx(_cxNorm(c.proc));
+      if (gl.length) return gl.some(function (g) { return gc.indexOf(g) >= 0; });
+      const pc = an(c.proc);
+      if (pc.length >= 6 && (" " + sl + " ").indexOf(" " + pc + " ") >= 0) return true;
+      return /^(PASA|INGRESA) A (QUIROFANO|QX|SALA)( (DE|PARA) (URGENCIA|CIRUGIA|QX)S?)?$/.test(sl);
+    }
+    function _altaCronoResumen(p, nd, cx) {
+      const txt = toSafeString(nd && nd.entrega).split("\n").map(function (l) {
+        const m = /^(\s*)(?:✓\s*)?\p{L}[\p{L}.'-]{0,24}\s+(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s+\d{1,2}:\d{2}(?:\s*[ap]\.?\s?m\.?)?\s*[-–—]\s?(.*)$/iu.exec(l);
+        return m ? m[1] + _altaZ(m[2]) + "/" + _altaZ(m[3]) + ": " + m[5] : l;
+      }).join("\n");
+      let ing = ""; try { ing = _altaIsoDe(_altaFecha(p && p.ingreso)); } catch (_) {}
+      const vistos = new Set();
+      const ent = _egLineasFechadas(txt).map(function (e, i) { return { fecha: e.fecha, text: e.text, auto: e.auto, i: i }; })
+        .filter(function (e) { return e.fecha && !e.auto && toSafeString(e.text).trim() && (!ing || _cxDias(e.fecha, ing) === null || _cxDias(e.fecha, ing) <= 2); })
+        .filter(function (e) {
+          return !cx || !cx.some(function (c) { return _altaMismaCx(c, e); });
+        })
+        .sort(function (a, b) { return a.fecha === b.fecha ? b.i - a.i : a.fecha.localeCompare(b.fecha); })
+        .map(function (e) {
+          let t = _altaUp(toSafeString(e.text).replace(/^✓\s*/, "").replace(/^[-•·*]\s*/, "")).replace(/[.;,\s]+$/, "");
+          if (t.length > 220) t = t.slice(0, 219).replace(/\s+\S*$/, "") + "…";
+          return { fecha: e.fecha, t: t };
+        })
+        .filter(function (e) { const n = _cxNorm(e.t).replace(/[^A-Z0-9]+/g, " ").trim(); if (!n || vistos.has(n)) return false; vistos.add(n); return true; });
+      const dias = [];
+      ent.forEach(function (e) { const u = dias[dias.length - 1]; if (u && u.fecha === e.fecha) u.t.push(e.t); else dias.push({ fecha: e.fecha, t: [e.t] }); });
+      const frases = dias.map(function (d) { return "EL " + _altaFmt(_altaFecha(d.fecha)) + " " + d.t.join("; ") + "."; });
+      const out = []; let largo = 0;
+      for (let i = frases.length - 1; i >= 0; i--) { if (largo + frases[i].length > 2600 && out.length) break; out.unshift(frases[i]); largo += frases[i].length + 1; }
+      return (out.length < frases.length ? "… " : "") + out.join(" ");
+    }
+    function _altaCierre(d) {
+      const serv = _altaUp(d.servicio) || "CIRUGÍA GENERAL", mot = d.motivo || "MEJORÍA";
+      if (mot === "PASE A OTRO HOSPITAL") return "SE EGRESA DEL SERVICIO DE " + serv + " POR PASE A OTRO HOSPITAL" + (_altaUp(d.motivo_hosp) ? " (" + _altaUp(d.motivo_hosp) + ")" : "") + ".";
+      if (mot === "DEFUNCIÓN") return "SE EGRESA DEL SERVICIO DE " + serv + " POR DEFUNCIÓN.";
+      if (mot === "ALTA VOLUNTARIA") return "SE EGRESA DEL SERVICIO DE " + serv + " POR ALTA VOLUNTARIA.";
+      return "DURANTE SU EVOLUCIÓN" + (d._operado ? " POSTQUIRÚRGICA" : "") + " SE REPORTA HEMODINÁMICAMENTE ESTABLE, SIN DATOS DE RESPUESTA INFLAMATORIA SISTÉMICA, TOLERANDO ADECUADAMENTE LA VÍA ORAL, POR LO QUE SE DA DE ALTA DEL SERVICIO DE " + serv + " POR MEJORÍA CLÍNICA.";
+    }
+    const ALTA_CIERRE_RE = /^(DURANTE SU EVOLUCI|SE DA DE ALTA|SE EGRESA)/;
+    // ¿Antibiótico oral activo? El de la casilla ATB del pase o un renglón de «Otros» (manejo) con vía oral.
+    function _altaAtbOral(nd) {
+      const ck = (nd && nd.checklist) || {}, cands = [];
+      if (ck.atb && toSafeString(ck.atb_nombre).trim()) cands.push(ck.atb_nombre);
+      toSafeString(nd && nd.manejo).split("\n").forEach(function (l) { if (/\b(VO|V\.O\.?|VIA ORAL|ORAL)\b/.test(_cxNorm(l))) cands.push(l); });
+      for (let i = 0; i < cands.length; i++) {
+        const s = _cxNorm(cands[i]);
+        const m = ALTA_MEDS.find(function (x) { return x.atb && x.re.test(s); });
+        if (m) return m;
+      }
+      return null;
+    }
+    // Todo lo del formato, armado con la tarjeta (sin IA).
+    function _altaPrefill(k) {
+      const p = patients.find(function (x) { return pid(x) === k; });
+      if (!p) return null;
+      const nd = getNote(k), ck = nd.checklist || {};
+      const ahora = new Date();
+      const serv = _altaServicio(p.esp), code = _altaEspCodigo(p.esp) || "CG";
+      const sexo = _altaSexo(p, nd), dec = _altaDecada(p.edad);
+      const dIng = _altaFecha(p.ingreso);
+      const edadN = /^\s*\d{1,3}\s*(A|AÑOS?|ANOS?)?\.?\s*$/i.test(toSafeString(p.edad)) ? parseInt(toSafeString(p.edad), 10) : NaN;
+      const dxEg = _altaUp(p.dx), dxIng = _altaDxIngreso(p.dx);
+      const cx = _altaCirugias(k, nd), operado = cx.length > 0;
+      const herida = operado && !cx.every(function (c) { return /CPRE|ENDOSCOP|COLONOSCOP|PANENDOSCOP/.test(_cxNorm(c.proc)); });
+      const ads = _altaDoctor(p.adscrito), res = _altaDoctor(p.residente);
+      const quien = "PACIENTE " + (sexo || "FEMENINO/MASCULINO") + " DE LA " + dec + " DÉCADA DE LA VIDA";
+      // Antecedentes (APP de la tarjeta)
+      let app = _altaUp(plTextoSinFirmas(nd.app).split("\n").map(function (l) { return l.trim(); }).filter(Boolean).join(", ")).replace(/^APP\s*:?\s*/, "");
+      if (/^(NIEGA\w*|NEGAD[OA]S?|SIN ANTECEDENTES.*|NINGUNO|N\/?A|-+)\.?$/.test(app)) app = "";
+      const antecedentes = quien + (app ? " CON ANTECEDENTES DE " + app.replace(/[.\s]+$/, "") + "." : " SIN ANTECEDENTES DE IMPORTANCIA PARA EL PADECIMIENTO ACTUAL.");
+      // Evolución, manejo y estado actual
+      const par = [];
+      let intro = quien + ", QUIEN ACUDE A LA PRESENTE UNIDAD POR EL SERVICIO DE URGENCIAS POR PRESENTAR CUADRO COMPATIBLE CON " + (dxIng || "__");
+      let img = _altaUp(plTextoSinFirmas(nd.imagen).split("\n").map(function (l) { return l.trim(); }).filter(Boolean)[0] || "");
+      if (img) { if (img.length > 200) img = img.slice(0, 199).replace(/\s+\S*$/, "") + "…"; intro += ", EVIDENCIADO MEDIANTE ESTUDIO DE IMAGEN QUE REPORTA: " + img.replace(/[.\s]+$/, ""); }
+      intro += ". INGRESA A CARGO DEL SERVICIO DE " + serv + (isNaN(dIng) ? "" : " EL " + _altaFmt(dIng)) + ".";
+      par.push(intro);
+      if (operado) {
+        par.push(cx.map(function (c, i) {
+          const f = c.fecha ? " EL " + _altaFmt(_altaFecha(c.fecha)) : "";
+          const proc = c.proc || "PROCEDIMIENTO QUIRÚRGICO";
+          return (i === 0 ? "SE DECIDE PASAR A QUIRÓFANO PARA LA REALIZACIÓN DE " + proc + f : "POSTERIORMENTE," + (f ? f : "") + " SE REALIZA " + proc)
+            + (c.hallazgos ? ", MISMA QUE REPORTA COMO HALLAZGOS " + c.hallazgos.replace(/[.\s]+$/, "") : "") + ".";
+        }).join(" "));
+      }
+      const crono = _altaCronoResumen(p, nd, cx);
+      if (crono) par.push("DURANTE SU ESTANCIA: " + crono);
+      const d = {
+        v: 1,
+        fecha_elab: _altaFmt(ahora), hora: _altaZ(ahora.getHours()) + ":" + _altaZ(ahora.getMinutes()),
+        nombre: _altaUp(p.nombre), edad: Number.isFinite(edadN) ? String(edadN) : _altaUp(p.edad), sexo: sexo,
+        exp: toSafeString(p.exp).trim(), servicio: serv, curp: _altaUp(ck.curp),
+        ingreso: _altaFmt(dIng), egreso: _altaFmt(ahora), dias: "",
+        dx_ingreso: dxIng, dx_egreso: dxEg, antecedentes: antecedentes, evolucion: "",
+        pendientes: [], meds: [], recomendaciones: [],
+        factores: "ATENCIÓN POR PARTE DEL SERVICIO DE " + serv, pronostico: "RESERVADO A EVOLUCIÓN",
+        motivo: "MEJORÍA", motivo_hosp: "",
+        firma_adscrito: (ads.dra ? "DRA " : "DR ") + (ads.nombre || "________") + " MB" + code,
+        firma_residente: (res.dra ? "DRA " : "DR ") + (res.nombre || "________") + " " + (res.grado || "R_") + code,
+        _operado: operado
+      };
+      d.dias = _altaDias(d.ingreso, d.egreso);
+      par.push(_altaCierre(d));
+      d.evolucion = par.join("\n\n");
+      // Problemas clínicos pendientes
+      d.pendientes.push("CITA A LA CONSULTA EXTERNA DE " + serv + (ads.nombre ? (ads.dra ? " CON LA DRA. " : " CON EL DR. ") + ads.nombre : "") + " A DISPONIBILIDAD");
+      if (herida) d.pendientes.push("RETIRO DE PUNTOS EN 10 DÍAS EN CENTRO DE SALUD");
+      d.pendientes.push("REPOSO RELATIVO EN CASA DURANTE 10 DÍAS");
+      plTextoSinFirmas(nd.pendientes).split("\n").forEach(function (l) {
+        const t = l.trim(); if (!t || /^✓/.test(t)) return;
+        const s = _cxNorm(t);
+        if (!/CONSULTA|\bCITA\b|C\.\s?EXT|CENTRO DE SALUD|RETIRO DE (PUNTOS|SUTURA|GRAPAS|DRENAJE|SONDA|CATETER)|PATOLOGIA|SEGUIMIENTO|AL EGRESO|AMBULATORI|EXTERNA|CONTROL (EN|POR|CON)/.test(s)) return;
+        if (/\bHOY\b|\bMANANA\b/.test(s)) return;
+        const u = _altaUp(t.replace(/^\s*(\d{1,2}\/\d{1,2}\s*[—-]?\s*)?[-•·*]?\s*/, "")).replace(/[.\s]+$/, "");
+        if (u && !d.pendientes.some(function (x) { return _cxNorm(x) === _cxNorm(u); })) d.pendientes.push(u);
+      });
+      // Medicamentos de egreso
+      const med = function (id) { return (ALTA_MEDS.find(function (x) { return x.id === id; }) || {}).t; };
+      const atb = _altaAtbOral(nd);
+      if (operado) { d.meds.push(atb ? atb.t : med("cefalexina"), med("paracetamol"), med("diclofenaco")); }
+      else { if (atb) d.meds.push(atb.t); d.meds.push(med("paracetamol")); }
+      // Recomendaciones para vigilancia ambulatoria
+      d.recomendaciones.push("DIETA LIBRE");
+      if (herida) d.recomendaciones.push("LAVADO DE HERIDA QUIRÚRGICA CON AGUA Y JABÓN NEUTRO");
+      d.recomendaciones.push("NO ESFUERZOS FÍSICOS, EJERCICIO NI CARGAR COSAS MAYORES A 10 KG", "REPOSO RELATIVO");
+      d.recomendaciones.push(herida
+        ? "SE EXPLICAN DATOS DE ALARMA CON CITA ABIERTA A URGENCIAS EN CASO DE FIEBRE, DOLOR INTENSO, ABERTURA DE LA HERIDA, SANGRADO O SALIDA DE PUS A TRAVÉS DE LA MISMA."
+        : "SE EXPLICAN DATOS DE ALARMA CON CITA ABIERTA A URGENCIAS EN CASO DE FIEBRE, DOLOR INTENSO, VÓMITO O SANGRADO.");
+      return d;
+    }
+    const ALTA_CAMPOS_TXT = ["fecha_elab", "hora", "nombre", "edad", "sexo", "exp", "servicio", "curp", "ingreso", "egreso", "dias",
+      "dx_ingreso", "dx_egreso", "antecedentes", "evolucion", "factores", "pronostico", "motivo", "motivo_hosp", "firma_adscrito", "firma_residente"];
+    const ALTA_CAMPOS_LISTA = ["pendientes", "meds", "recomendaciones"];
+    function _altaNorm(b) {
+      const o = {};
+      if (!isPlainObject(b)) return o;
+      ALTA_CAMPOS_TXT.forEach(function (f) { if (b[f] !== undefined && b[f] !== null) o[f] = toSafeString(b[f]); });
+      ALTA_CAMPOS_LISTA.forEach(function (f) { if (Array.isArray(b[f])) o[f] = b[f].map(toSafeString).filter(function (x) { return x.trim(); }); });
+      if (o.motivo && ALTA_MOTIVOS.indexOf(o.motivo) < 0) o.motivo = "MEJORÍA";
+      return o;
+    }
+
+    // ─── Ventana ───
+    let _altaKey = null, _altaSaveT = null, _altaPollT = null, _altaUltimoPath = "", _altaOperado = false;
+    // Borrador (revisión 25 nov 2026): solo se escribe si en ESTA apertura se editó algo (_altaSucio; abrir y cerrar no
+    // escribe nada). _altaBaseTs = ts del borrador sobre el que se trabaja (para notar si otro iPad guardó uno encima) y
+    // _altaHuella = huella del prellenado de la tarjeta con que se armó (si la tarjeta cambia, se avisa al reabrir).
+    // _altaRenovar: ya se avisó «la tarjeta cambió» (o que el borrador es de antes de la huella); si el usuario edita y se
+    // guarda, el borrador toma la huella de la tarjeta ACTUAL (lo revisó) y el aviso no se repite en cada apertura.
+    // _altaAvisoOtro: «se guardó otro borrador…»; los mensajes de Descargar/Drive lo llevan pegado en vez de taparlo.
+    let _altaSucio = false, _altaBaseTs = 0, _altaHuella = "", _altaRenovar = false, _altaAvisoOtro = "";
+    const ALTA_SINHUELLA_LS = "pl_alta_sinhuella_v1";
+    // Huella del prellenado: sin lo que cambia solo con el reloj (fecha, hora, egreso, días) ni la CURP (la guarda la ventana).
+    function _altaHuellaDe(d) {
+      if (!d) return "";
+      const c = {}; ALTA_CAMPOS_TXT.concat(ALTA_CAMPOS_LISTA).forEach(function (f) { if (["fecha_elab", "hora", "egreso", "dias", "curp"].indexOf(f) < 0) c[f] = d[f]; });
+      const t = JSON.stringify(c); let h = 5381;
+      for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+      return "h" + (h >>> 0).toString(36) + "." + t.length.toString(36);
+    }
+    function _altaCss() {
+      if (document.getElementById("alta-doc-css")) return;
+      const st = document.createElement("style"); st.id = "alta-doc-css";
+      st.textContent = "#alta-doc-modal{z-index:10050}#alta-doc-modal .modal{max-width:880px;width:97%;padding:12px 16px 0}"
+        + ".alta-top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}.alta-top .modal-title{font-size:17px}"
+        + ".alta-aviso{font-size:12px;color:#64748b;margin:0 0 6px}.alta-aviso button{font-size:12px;padding:3px 8px;border-radius:7px;border:1px solid #cbd5e1;background:#f1f5f9;cursor:pointer;margin-left:6px}"
+        + ".alta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 10px}"
+        + ".alta-f{display:flex;flex-direction:column;gap:2px;font-size:11px;font-weight:700;color:#475569;min-width:0}"
+        + ".alta-f input,.alta-f select,.alta-f textarea{font:inherit;font-weight:400;font-size:16px;padding:7px 8px;border:1px solid #cbd5e1;border-radius:7px;width:100%;box-sizing:border-box;background:#fff;color:#0f172a}"
+        + ".alta-f textarea{resize:vertical;line-height:1.35;min-height:44px}.alta-full{grid-column:1/-1}"
+        + ".alta-sec{font-size:12px;font-weight:800;color:var(--navy);margin:12px 0 4px;border-bottom:1px solid #e2e8f0;padding-bottom:2px;text-transform:uppercase;letter-spacing:.03em}"
+        + ".alta-medadd{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}.alta-medadd select{flex:1;min-width:200px;font-size:15px;padding:7px;border:1px solid #cbd5e1;border-radius:7px}"
+        + ".alta-btn{min-height:44px;padding:8px 14px;border-radius:9px;border:1px solid #cbd5e1;background:#f8fafc;color:#0f172a;font-weight:700;font-size:14px;cursor:pointer}"
+        + ".alta-btn.pri{background:#0f4c75;color:#fff;border-color:#0f4c75}.alta-btn.drive{background:#15803d;color:#fff;border-color:#15803d}.alta-btn:disabled{opacity:.55}"
+        + ".alta-pie{position:sticky;bottom:0;background:inherit;border-top:1px solid #e2e8f0;margin:10px -16px 0;padding:8px 16px 10px}"
+        + ".alta-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}"
+        + "#alta-estado{font-size:13px;margin-bottom:6px;line-height:1.35}#alta-estado:empty{display:none}#alta-estado.ok{color:#15803d}#alta-estado.err{color:#b91c1c}#alta-estado.warn{color:#b45309}"
+        + ".alta-mini{font-size:12px;padding:4px 9px;min-height:30px;border-radius:7px;border:1px solid #cbd5e1;background:#f1f5f9;cursor:pointer;margin-left:4px}"
+        + "#alta-lista{font-size:12px;color:#334155;margin-top:4px}.alta-row{padding:4px 0;border-bottom:1px dashed #e2e8f0}.alta-row a{color:#0369a1;font-weight:700}"
+        + "body.dark .alta-f input,body.dark .alta-f select,body.dark .alta-f textarea{background:var(--input-bg);color:var(--text)}body.dark .alta-f,body.dark #alta-lista{color:var(--text-muted)}"
+        + "body.dark .alta-btn:not(.pri):not(.drive){background:var(--surface-2);color:var(--text)}";
+      document.head.appendChild(st);
+    }
+    function _altaCampo(f, label, tipo, extra) {
+      const id = "alta-f-" + f, cls = "alta-f" + (extra && extra.full ? " alta-full" : "");
+      let ctl;
+      if (tipo === "ta") ctl = '<textarea id="' + id + '" data-af="' + f + '" data-testid="' + id + '" rows="' + ((extra && extra.rows) || 2) + '"' + (extra && extra.lista ? ' data-lista="1"' : "") + ' spellcheck="true"></textarea>';
+      else if (tipo === "sel") ctl = '<select id="' + id + '" data-af="' + f + '" data-testid="' + id + '" data-no-sheet="1">' + extra.opts.map(function (o) { return '<option value="' + esc(o) + '">' + esc(o || "— elegir —") + "</option>"; }).join("") + "</select>";
+      else ctl = '<input id="' + id + '" data-af="' + f + '" data-testid="' + id + '" autocomplete="off"' + (extra && extra.ph ? ' placeholder="' + esc(extra.ph) + '"' : "") + ">";
+      return '<label class="' + cls + '"' + (extra && extra.wrapId ? ' id="' + extra.wrapId + '"' : "") + ">" + esc(label) + ctl + "</label>";
+    }
+    function _altaModal() {
+      let ov = document.getElementById("alta-doc-modal");
+      if (ov) return ov;
+      _altaCss();
+      ov = document.createElement("div");
+      ov.id = "alta-doc-modal"; ov.className = "modal-bg"; ov.style.display = "none";
+      ov.setAttribute("data-testid", "alta-modal");
+      const C = _altaCampo;
+      ov.innerHTML = '<div class="modal" role="dialog" aria-label="Nota de alta">'
+        + '<div class="alta-top"><div class="modal-title">📄 Nota de alta <span id="alta-cama" style="font-weight:500;color:#64748b;font-size:14px"></span></div><button class="modal-close" onclick="altaDocCerrar()" data-testid="alta-cerrar" aria-label="Cerrar">✕</button></div>'
+        + '<div class="alta-aviso" id="alta-aviso" data-testid="alta-aviso"></div>'
+        + '<div class="alta-grid">'
+        + C("fecha_elab", "FECHA DE ELABORACIÓN", "in", { ph: "DD.MM.AAAA" }) + C("hora", "HORA", "in", { ph: "HH:MM" })
+        + C("nombre", "NOMBRE DEL PACIENTE", "in") + C("edad", "EDAD", "in", { ph: "AÑOS (o «8 MESES»)" }) + C("sexo", "SEXO", "sel", { opts: ["", "FEMENINO", "MASCULINO"] })
+        + C("exp", "EXPEDIENTE", "in") + C("servicio", "SERVICIO", "in") + C("curp", "CURP", "in", { ph: "Se guarda para la próxima" })
+        + C("ingreso", "FECHA DE INGRESO", "in", { ph: "DD.MM.AAAA" }) + C("egreso", "FECHA DE EGRESO", "in", { ph: "DD.MM.AAAA" }) + C("dias", "NO. DE DÍAS DE HOSPITALIZACIÓN", "in")
+        + C("dx_ingreso", "DIAGNÓSTICO DE INGRESO", "ta", { full: true, rows: 2 }) + C("dx_egreso", "DIAGNÓSTICO DE EGRESO", "ta", { full: true, rows: 2 })
+        + "</div>"
+        + '<div class="alta-sec">Resumen clínico</div><div class="alta-grid">'
+        + C("antecedentes", "ANTECEDENTES DE IMPORTANCIA", "ta", { full: true, rows: 2 })
+        + C("evolucion", "EVOLUCIÓN, MANEJO Y ESTADO ACTUAL", "ta", { full: true, rows: 10 })
+        + C("pendientes", "PROBLEMAS CLÍNICOS PENDIENTES (uno por renglón)", "ta", { full: true, rows: 4, lista: true })
+        + '<div class="alta-full">' + C("meds", "PLAN DE MANEJO Y TRATAMIENTO — medicamentos con posología (uno por renglón)", "ta", { rows: 5, lista: true })
+        + '<div class="alta-medadd"><select id="alta-med-sel" data-no-sheet="1" data-testid="alta-med-sel"><option value="">➕ Medicamento frecuente de egreso…</option>'
+        + ALTA_MEDS.map(function (m) { return '<option value="' + esc(m.id) + '">' + esc(m.t) + "</option>"; }).join("")
+        + '</select><button type="button" class="alta-btn" onclick="altaAgregarMed()" data-testid="alta-med-add">Agregar</button></div></div>'
+        + C("recomendaciones", "RECOMENDACIONES PARA VIGILANCIA AMBULATORIA (una por renglón)", "ta", { full: true, rows: 5, lista: true })
+        + C("factores", "ATENCIÓN DE FACTORES DE RIESGO DETECTADOS", "ta", { full: true, rows: 1 })
+        + C("pronostico", "PRONÓSTICO", "in")
+        + C("motivo", "MOTIVO DEL EGRESO", "sel", { opts: ALTA_MOTIVOS })
+        + C("motivo_hosp", "¿A QUÉ HOSPITAL?", "in", { wrapId: "alta-hosp-wrap" })
+        + "</div>"
+        + '<div class="alta-sec">Firmas</div><div class="alta-grid">'
+        + C("firma_adscrito", "MÉDICO ADSCRITO (SELLO Y FIRMA)", "in") + C("firma_residente", "MÉDICO RESIDENTE (NOMBRE, CÉDULA Y FIRMA)", "in")
+        + "</div>"
+        + '<div class="alta-sec">Altas guardadas en Drive</div><div id="alta-lista" data-testid="alta-lista"></div>'
+        + '<div class="alta-pie"><div id="alta-estado" data-testid="alta-estado" aria-live="polite"></div><div class="alta-btns">'
+        + '<button type="button" class="alta-btn" onclick="altaDocCerrar()">Cerrar</button>'
+        + '<button type="button" class="alta-btn pri" onclick="altaDescargarWord()" data-testid="alta-descargar">⬇️ Descargar Word</button>'
+        + '<button type="button" class="alta-btn drive" onclick="altaGuardarDrive()" data-testid="alta-drive">☁️ Guardar en Drive</button>'
+        + "</div></div></div>";
+      ov.addEventListener("input", _altaOnInput);
+      ov.addEventListener("change", _altaOnInput);
+      document.body.appendChild(ov);
+      return ov;
+    }
+    function _altaPintar(d) {
+      ALTA_CAMPOS_TXT.forEach(function (f) { const el = document.getElementById("alta-f-" + f); if (el) el.value = toSafeString(d[f]); });
+      ALTA_CAMPOS_LISTA.forEach(function (f) { const el = document.getElementById("alta-f-" + f); if (el) el.value = (d[f] || []).join("\n"); });
+      const w = document.getElementById("alta-hosp-wrap"); if (w) w.style.display = d.motivo === "PASE A OTRO HOSPITAL" ? "" : "none";
+    }
+    // Lo que hay en la ventana (null si no está abierta).
+    function _altaLeer() {
+      if (!document.getElementById("alta-f-nombre")) return null;
+      const d = { v: 1 };
+      ALTA_CAMPOS_TXT.forEach(function (f) { const el = document.getElementById("alta-f-" + f); d[f] = el ? toSafeString(el.value) : ""; });
+      ALTA_CAMPOS_LISTA.forEach(function (f) {
+        const el = document.getElementById("alta-f-" + f);
+        d[f] = (el ? el.value : "").split("\n").map(function (l) { return l.replace(/^\s*[-•·*]\s*/, "").trim(); }).filter(Boolean);
+      });
+      d._operado = _altaOperado;
+      return d;
+    }
+    function openAltaDoc(k) {
+      const p = patients.find(function (x) { return pid(x) === k; });
+      if (!p) return;
+      const ov = _altaModal();
+      _altaKey = k; _altaUltimoPath = "";
+      const fresco = _altaPrefill(k);
+      _altaOperado = !!fresco._operado;
+      const nd = getNote(k), b = nd.checklist && isPlainObject(nd.checklist.alta_borrador) ? nd.checklist.alta_borrador : null;
+      const hFresco = _altaHuellaDe(fresco);
+      // Borrador sin huella (formato anterior): no se le pone la de hoy en silencio (no se sabe con qué tarjeta se armó).
+      _altaSucio = false; _altaBaseTs = b ? (Number(b.ts) || 0) : 0; _altaHuella = b ? toSafeString(b.huella) : hFresco;
+      _altaRenovar = false; _altaAvisoOtro = "";
+      let d = fresco, aviso = "Prellenado con la tarjeta (DX, cirugías, Cronología, adscrito del censo). Revisa y corrige lo que haga falta: se guarda solo.";
+      let cambio = false;
+      if (b) {
+        d = Object.assign({}, fresco, _altaNorm(b));
+        // Borrador de otro día: fecha de elaboración, hora, egreso y días se ponen en hoy.
+        if (b.dia && b.dia !== todayStr()) { d.fecha_elab = fresco.fecha_elab; d.hora = fresco.hora; d.egreso = fresco.egreso; d.dias = _altaDias(d.ingreso, d.egreso); }
+        const t = b.ts ? new Date(b.ts) : null;
+        aviso = "Borrador guardado" + (t && !isNaN(t) ? " el " + _altaZ(t.getDate()) + "/" + _altaZ(t.getMonth() + 1) + " " + _altaZ(t.getHours()) + ":" + _altaZ(t.getMinutes()) : "") + (b.por ? " por " + b.por : "") + ".";
+        cambio = !!b.huella && b.huella !== hFresco;
+        if (!b.huella) {
+          // Se avisa una vez por borrador en este iPad (marca en localStorage); al editar y guardar toma la huella actual.
+          let vistos = {}; try { vistos = JSON.parse(localStorage.getItem(ALTA_SINHUELLA_LS) || "{}") || {}; } catch (_) { vistos = {}; }
+          const mk = k + "|" + (Number(b.ts) || 0);
+          if (!vistos[mk]) {
+            cambio = "viejo"; vistos[mk] = Date.now();
+            const ks = Object.keys(vistos).sort(function (a, c) { return vistos[c] - vistos[a]; }).slice(0, 50), keep = {};
+            ks.forEach(function (x) { keep[x] = vistos[x]; });
+            try { localStorage.setItem(ALTA_SINHUELLA_LS, JSON.stringify(keep)); } catch (_) {}
+          }
+          _altaRenovar = true;
+        }
+        if (cambio) _altaRenovar = true;
+      }
+      const av = document.getElementById("alta-aviso");
+      av.textContent = aviso;
+      if (cambio) {
+        const w = document.createElement("strong"); w.setAttribute("data-testid", "alta-cambio"); w.style.color = "#b45309";
+        w.textContent = cambio === "viejo" ? " ⚠️ Borrador de una versión anterior: posiblemente desactualizado (la tarjeta pudo cambiar desde entonces). Revisa o usa «↻ Rehacer»."
+          : " ⚠️ La tarjeta cambió desde este borrador (DX, cirugías, Cronología…): revisa o usa «↻ Rehacer».";
+        av.appendChild(w);
+      }
+      if (b) { const rb = document.createElement("button"); rb.type = "button"; rb.textContent = "↻ Rehacer desde la tarjeta"; rb.setAttribute("data-testid", "alta-rehacer"); rb.onclick = altaRehacer; av.appendChild(rb); }
+      document.getElementById("alta-cama").textContent = "· " + (p.cama ? "cama " + p.cama + " · " : "") + toSafeString(p.nombre);
+      _altaPintar(d);
+      _altaEstado("");
+      ov.style.display = "flex";
+      try { ov.querySelector(".modal").scrollTop = 0; } catch (_) {}
+      _altaListar(k);
+      _altaColaSubir();
+    }
+    function altaRehacer() {
+      if (!_altaKey) return;
+      if (!confirm("¿Rehacer la nota de alta con lo que hay ahora en la tarjeta?\n\nSe pierde lo que corregiste a mano en esta ventana.")) return;
+      const d = _altaPrefill(_altaKey); if (!d) return;
+      _altaOperado = !!d._operado;
+      _altaPintar(d);
+      document.getElementById("alta-aviso").textContent = "Rehecha con la tarjeta.";
+      _altaHuella = _altaHuellaDe(d); _altaSucio = true; _altaRenovar = false;   // pedido explícito: el borrador pasa a ser el de la tarjeta de hoy
+      _altaGuardarBorrador();
+    }
+    function altaDocCerrar() {
+      clearTimeout(_altaSaveT); _altaSaveT = null;
+      try { _altaGuardarBorrador(); } catch (e) { safeLog("alta borrador:", e); }
+      clearTimeout(_altaPollT); _altaPollT = null;
+      const ov = document.getElementById("alta-doc-modal"); if (ov) ov.style.display = "none";
+      _altaKey = null;
+    }
+    function _altaOnInput(ev) {
+      const el = ev && ev.target; if (!el || !el.dataset || !el.dataset.af) return;
+      const f = el.dataset.af;
+      _altaSucio = true;
+      if (f === "ingreso" || f === "egreso") { const dd = document.getElementById("alta-f-dias"); const n = _altaDias(document.getElementById("alta-f-ingreso").value, document.getElementById("alta-f-egreso").value); if (dd && n !== "") dd.value = n; }
+      if ((f === "motivo" || f === "motivo_hosp" || f === "servicio") && ev.type === "change") {
+        const d = _altaLeer();
+        const w = document.getElementById("alta-hosp-wrap"); if (w) w.style.display = d.motivo === "PASE A OTRO HOSPITAL" ? "" : "none";
+        // El cierre de la narrativa sigue al motivo (solo si el último párrafo es un cierre que armó la app).
+        const ev2 = document.getElementById("alta-f-evolucion"), pars = ev2.value.replace(/\s+$/, "").split(/\n\s*\n/);
+        if (pars.length && ALTA_CIERRE_RE.test(pars[pars.length - 1].trim())) { pars[pars.length - 1] = _altaCierre(d); ev2.value = pars.join("\n\n"); }
+      }
+      clearTimeout(_altaSaveT);
+      _altaSaveT = setTimeout(function () { _altaSaveT = null; _altaGuardarBorrador(); }, 800);
+    }
+    function altaAgregarMed() {
+      const sel = document.getElementById("alta-med-sel"), ta = document.getElementById("alta-f-meds");
+      const m = ALTA_MEDS.find(function (x) { return x.id === (sel && sel.value); });
+      if (!m || !ta) return;
+      const cur = ta.value.replace(/\s+$/, "");
+      if (cur.split("\n").some(function (l) { return l.trim() === m.t; })) { sel.value = ""; return; }
+      ta.value = (cur ? cur + "\n" : "") + m.t;
+      sel.value = "";
+      _altaOnInput({ target: ta, type: "input" });
+    }
+    // El borrador (lo editado) va a checklist.alta_borrador por el guardado normal; la CURP también a checklist.curp.
+    // Solo si en esta apertura se editó algo (_altaSucio). Si mientras tanto llegó el borrador de otro iPad, gana el último
+    // (este) pero se avisa: no se pierde en silencio.
+    function _altaGuardarBorrador() {
+      const k = _altaKey; if (!k || !_altaSucio) return false;
+      const d = _altaLeer(); if (!d) return false;
+      const nd = getNote(k); if (!nd.checklist) nd.checklist = {};
+      const limpio = function (o) { const c = {}; ALTA_CAMPOS_TXT.concat(ALTA_CAMPOS_LISTA).forEach(function (f) { c[f] = o[f]; }); return JSON.stringify(c); };
+      const prev = nd.checklist.alta_borrador;
+      const flags = [];
+      if (!isPlainObject(prev) || limpio(_altaNorm(prev)) !== limpio(d)) {
+        let por = ""; try { por = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+        if (isPlainObject(prev) && (Number(prev.ts) || 0) !== _altaBaseTs) {
+          const t = new Date(Number(prev.ts) || 0);
+          _altaAvisoOtro = "";
+          _altaEstado("⚠️ Mientras esta ventana estaba abierta se guardó otro borrador" + (prev.por ? " (" + toSafeString(prev.por) + (isNaN(t) ? "" : ", " + _altaZ(t.getHours()) + ":" + _altaZ(t.getMinutes())) + ")" : "")
+            + "; quedó el tuyo encima. Si hacía falta algo del otro, agrégalo aquí.", "warn");
+          _altaAvisoOtro = document.getElementById("alta-estado") ? document.getElementById("alta-estado").textContent : "";
+          try { if (typeof _plToast === "function") _plToast("⚠️ Nota de alta: se guardó tu borrador encima del de " + (toSafeString(prev.por) || "otro dispositivo"), "#b45309", 6000); } catch (_) {}
+        }
+        // Editado después del aviso de cambio: lo revisó con la tarjeta de ahora → huella de la tarjeta actual.
+        if (_altaRenovar) { try { _altaHuella = _altaHuellaDe(_altaPrefill(k)) || _altaHuella; _altaRenovar = false; } catch (e) { safeLog("alta huella:", e); } }
+        const obj = { v: 1, dia: todayStr(), ts: Date.now(), por: por, huella: _altaHuella };
+        ALTA_CAMPOS_TXT.concat(ALTA_CAMPOS_LISTA).forEach(function (f) { obj[f] = d[f]; });
+        nd.checklist.alta_borrador = obj; flags.push("ck_alta_borrador");
+        _altaBaseTs = obj.ts;
+      } else if (isPlainObject(prev)) _altaBaseTs = Number(prev.ts) || 0;
+      _altaSucio = false;
+      const curp = _altaUp(d.curp);
+      if (curp && curp !== toSafeString(nd.checklist.curp)) { nd.checklist.curp = curp; flags.push("ck_curp"); }
+      if (flags.length) _saveNoteFlags(k, nd, flags);
+      return flags.length > 0;
+    }
+    function _altaEstado(msg, tipo, link) {
+      const el = document.getElementById("alta-estado"); if (!el) return;
+      // El aviso de «se guardó otro borrador» no lo tapa el mensaje siguiente (Descargar/Drive): va pegado después.
+      if (msg && _altaAvisoOtro && msg !== _altaAvisoOtro) { msg = msg + " · " + _altaAvisoOtro; if (tipo !== "err") tipo = "warn"; }
+      el.className = tipo || ""; el.textContent = msg || "";
+      if (link) { const a = document.createElement("a"); a.href = link; a.target = "_blank"; a.rel = "noopener"; a.textContent = " 📂 Abrir en Drive"; a.setAttribute("data-testid", "alta-abrir-drive"); el.appendChild(a); }
+    }
+    function _altaIsoEgreso(d) { return _altaIsoDe(_altaFecha(d.egreso)) || todayStr(); }
+    function _altaNombreArchivo(d) {
+      return ("ALTA " + _altaUp(d.exp) + " " + _altaUp(d.nombre) + " " + _altaIsoEgreso(d)).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() + ".docx";
+    }
+
+    // ─── Word (.docx) fiel al formato del hospital ───
+    let _altaImgCache = null;
+    async function _altaEncabezado() {
+      if (_altaImgCache) return _altaImgCache;
+      try { const r = await fetch("vendor/alta-encabezado.png"); if (r.ok) { _altaImgCache = new Uint8Array(await r.arrayBuffer()); return _altaImgCache; } } catch (_) {}
+      return null;
+    }
+    async function _altaDocxBlob(d) {
+      await _libLoad("docx");
+      const X = window.docx;
+      if (!X) throw new Error("la librería de Word no cargó");
+      const { Document, Packer, Paragraph, TextRun, ImageRun, Header, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, LevelFormat, VerticalAlign } = X;
+      const img = await _altaEncabezado();
+      const F = "Calibri", up = _altaUp;
+      // Sin caracteres de control (texto pegado de PDF u OCR): uno solo deja word/document.xml mal formado y el Word no abre.
+      const run = function (t, o) { return new TextRun(Object.assign({ text: _altaSinCtl(t), font: F, size: 16 }, o || {})); };
+      const lbl = function (t) { return run(t, { bold: true }); };
+      const val = function (t) { return run(t, { underline: {} }); };
+      const gap = function () { return run("    "); };
+      const linea = function (parts, o) { return new Paragraph(Object.assign({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 160, line: 240 }, children: parts }, o || {})); };
+      const S = 13;   // tamaño del texto de la tabla del resumen (como el formato)
+      const celdaTxt = function (t) {
+        return toSafeString(t).split(/\n+/).map(function (x) { return x.trim(); }).filter(Boolean).map(function (x) {
+          return new Paragraph({ alignment: AlignmentType.JUSTIFIED, spacing: { after: 60, line: 240 }, children: [run(up(x), { size: S })] });
+        });
+      };
+      const celdaLista = function (arr) {
+        return (arr || []).filter(function (x) { return toSafeString(x).trim(); }).map(function (x) {
+          return new Paragraph({ numbering: { reference: "alta-vinetas", level: 0 }, alignment: AlignmentType.JUSTIFIED, spacing: { line: 276 }, children: [run(up(x), { size: S })] });
+        });
+      };
+      const borde = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+      const fila = function (titulo, hijos) {
+        return new TableRow({ children: [
+          new TableCell({ width: { size: 2263, type: WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, margins: { top: 60, bottom: 60, left: 80, right: 80 },
+            children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [run(titulo, { bold: true, size: S })] })] }),
+          new TableCell({ width: { size: 7689, type: WidthType.DXA }, margins: { top: 60, bottom: 60, left: 100, right: 100 },
+            children: (hijos && hijos.length) ? hijos : [new Paragraph({ children: [run("", { size: S })] })] })
+        ] });
+      };
+      const children = [];
+      children.push(linea([lbl("FECHA DE ELABORACIÓN: "), val(d.fecha_elab), gap(), lbl("HORA: "), val(d.hora ? d.hora.replace(/\s*hrs?\.?$/i, "") + " hrs" : "")], { spacing: { before: 900, after: 160, line: 240 } }));
+      children.push(linea([lbl("NOMBRE DEL PACIENTE: "), val(up(d.nombre)), gap(), lbl("EDAD: "), val(up(d.edad)), run(/^\s*\d+\s*$/.test(toSafeString(d.edad)) ? " AÑOS" : ""), gap(), lbl("SEXO: "), val(up(d.sexo))]));
+      children.push(linea([lbl("EXPEDIENTE: "), val(d.exp), gap(), lbl("SERVICIO: "), val(up(d.servicio)), gap(), lbl("CURP: "), val(up(d.curp))]));
+      children.push(linea([lbl("FECHA DE INGRESO: "), val(d.ingreso), gap(), lbl("FECHA DE EGRESO: "), val(d.egreso), gap(), lbl("NO. DE DÍAS DE HOSPITALIZACIÓN: "), val(d.dias)]));
+      children.push(linea([lbl("DIAGNÓSTICO DE INGRESO: "), val(up(d.dx_ingreso))], { spacing: { after: 80, line: 276 } }));
+      children.push(linea([lbl("DIAGNÓSTICO DE EGRESO: "), val(up(d.dx_egreso))], { spacing: { after: 80, line: 276 } }));
+      children.push(linea([lbl("RESUMEN CLÍNICO:")], { spacing: { after: 80, line: 276 } }));
+      children.push(new Table({
+        width: { size: 9952, type: WidthType.DXA }, columnWidths: [2263, 7689],
+        borders: { top: borde, bottom: borde, left: borde, right: borde, insideHorizontal: borde, insideVertical: borde },
+        rows: [
+          fila("ANTECEDENTES DE IMPORTANCIA", celdaTxt(d.antecedentes)),
+          fila("EVOLUCIÓN, MANEJO Y ESTADO ACTUAL", celdaTxt(d.evolucion)),
+          fila("PROBLEMAS CLÍNICOS PENDIENTES", celdaLista(d.pendientes)),
+          fila("PLAN DE MANEJO Y TRATAMIENTO (OBLIGATORIA DESCRIPCIÓN DE TRATAMIENTO Y POSOLOGÍA)", celdaLista(d.meds)),
+          fila("RECOMENDACIONES PARA VIGILANCIA AMBULATORIA", celdaLista(d.recomendaciones)),
+          fila("ATENCIÓN DE FACTORES DE RIESGO DETECTADOS", celdaTxt(d.factores)),
+          fila("PRONÓSTICO", celdaTxt(d.pronostico))
+        ]
+      }));
+      const mot = ALTA_MOTIVOS.indexOf(d.motivo) >= 0 ? d.motivo : "MEJORÍA";
+      // Igual al machote: «MOTIVO DEL EGRESO: MEJORÍA / PASE A OTRO HOSPITAL ____ CUAL / DEFUNCIÓN: ________»; la opción
+      // elegida va con (X) y su espacio lleno. ALTA VOLUNTARIA no está en el formato: se agrega solo si se eligió.
+      const motRuns = [run("MOTIVO DEL EGRESO", { bold: true, italics: true }), run(": ", { bold: true })];
+      const hosp = up(d.motivo_hosp);
+      const opc = [
+        ["MEJORÍA", "MEJORÍA"],
+        ["PASE A OTRO HOSPITAL", mot === "PASE A OTRO HOSPITAL" && hosp ? "PASE A OTRO HOSPITAL CUAL: " + hosp : "PASE A OTRO HOSPITAL ____ CUAL"],
+        ["DEFUNCIÓN", "DEFUNCIÓN: ________"]
+      ];
+      if (mot === "ALTA VOLUNTARIA") opc.push(["ALTA VOLUNTARIA", "ALTA VOLUNTARIA"]);
+      opc.forEach(function (o, i) {
+        if (i) motRuns.push(run(" / "));
+        motRuns.push(o[0] === mot ? run("(X) " + o[1], { bold: true, underline: {} }) : run(o[1]));
+      });
+      children.push(linea(motRuns, { spacing: { before: 240, after: 200, line: 240 } }));
+      const sinBorde = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+      const firma = function (nombre, leyenda) {
+        return new TableCell({ width: { size: 4976, type: WidthType.DXA }, borders: { top: sinBorde, bottom: sinBorde, left: sinBorde, right: sinBorde }, margins: { left: 200, right: 200 },
+          children: [
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 500 }, children: [run(up(nombre))] }),
+            new Paragraph({ alignment: AlignmentType.CENTER, border: { top: { style: BorderStyle.SINGLE, size: 6, color: "000000", space: 1 } }, children: [run(leyenda)] })
+          ] });
+      };
+      children.push(new Table({
+        width: { size: 9952, type: WidthType.DXA }, columnWidths: [4976, 4976],
+        borders: { top: sinBorde, bottom: sinBorde, left: sinBorde, right: sinBorde, insideHorizontal: sinBorde, insideVertical: sinBorde },
+        rows: [new TableRow({ children: [firma(d.firma_adscrito, "SELLO Y FIRMA DE MÉDICO ADSCRITO"), firma(d.firma_residente, "NOMBRE CÉDULA Y FIRMA DE MÉDICO RESIDENTE")] })]
+      }));
+      // Encabezado: la imagen del formato (logo + recuadro HOSPITAL GENERAL LEÓN / NOTA DE ALTA…) a todo lo ancho, detrás del
+      // texto, en la misma posición que el formato. Sin la imagen (sin red y aún no guardada en el iPad) va el texto.
+      const hdr = img
+        ? [new Paragraph({ children: [new ImageRun({ data: img, transformation: { width: 794, height: 141 },
+            floating: { horizontalPosition: { relative: X.HorizontalPositionRelativeFrom.PAGE, offset: 38100 }, verticalPosition: { relative: X.VerticalPositionRelativeFrom.PAGE, offset: 145000 }, behindDocument: true } })] })]
+        : [new Paragraph({ alignment: AlignmentType.CENTER, children: [run("HOSPITAL GENERAL LEÓN", { bold: true, size: 28 })] }),
+           new Paragraph({ alignment: AlignmentType.CENTER, children: [run("NOTA DE ALTA O EGRESO HOSPITALARIO", { bold: true, size: 22 })] })];
+      const doc = new Document({
+        creator: "Piso Libro", title: "NOTA DE ALTA O EGRESO HOSPITALARIO",
+        styles: { default: { document: { run: { font: F, size: 16 } } } },
+        numbering: { config: [{ reference: "alta-vinetas", levels: [{ level: 0, format: LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT, style: { paragraph: { indent: { left: 360, hanging: 260 } } } }] }] },
+        sections: [{
+          properties: { page: { size: { width: 11909, height: 16834 }, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 720, footer: 720 } } },
+          headers: { default: new Header({ children: hdr }) },
+          children: children
+        }]
+      });
+      // Los bytes salen de JSZip en base64 (JS puro), no leyendo un Blob: en WebKit leer un Blob con FileReader puede
+      // fallar sin red (NotReadableError) y la cola sin conexión se quedaba sin el Word. Con los mismos bytes se descarga,
+      // se sube (cuerpo Uint8Array) y se encola (base64).
+      const b64 = await Packer.toBase64String(doc);
+      const u8 = _altaBytesDeB64(b64);
+      return { blob: new Blob([u8], { type: ALTA_DOCX_MIME }), u8: u8, b64: b64 };
+    }
+    function _altaDescargarBlob(blob, nombre) {
+      const url = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = url; a.download = nombre; a.style.display = "none";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+    }
+    let _altaGenerando = false;
+    async function _altaGenerar() {
+      if (_altaGenerando) return null;
+      const d = _altaLeer(); if (!d) return null;
+      _altaGenerando = true;
+      try {
+        clearTimeout(_altaSaveT); _altaSaveT = null;
+        _altaGuardarBorrador();
+        _altaEstado("⏳ Armando el Word…");
+        const w = await _altaDocxBlob(d);
+        _altaDescargarBlob(w.blob, _altaNombreArchivo(d));
+        return { d: d, blob: w.blob, u8: w.u8, b64: w.b64 };
+      } catch (e) {
+        safeLog("alta docx:", e);
+        _altaEstado("❌ No se pudo armar el Word: " + (e && e.message ? e.message : e), "err");
+        return null;
+      } finally { _altaGenerando = false; }
+    }
+    async function altaDescargarWord() {
+      const r = await _altaGenerar();
+      if (r) _altaEstado("✅ Word descargado: " + _altaNombreArchivo(r.d), "ok");
+    }
+
+    // ─── Subida al bucket «altas» + fila en altas_docs (la copia a Drive la hace censo-sync.gs) ───
+    function _altaEsRed(e) { const m = String((e && (e.message || e)) || ""); return !!e && (e.name === "TypeError" || e.name === "AbortError" || /Failed to fetch|NetworkError|Load failed|network|offline/i.test(m)); }
+    // Error permanente (revisión 25 nov 2026): un 4xx que no sea 401 (sesión vencida), 408 ni 429 (pasajeros). Bucket o tabla
+    // aún sin crear, RLS, cuenta bloqueada…: reintentarlo cada minuto solo gasta datos. Queda marcado en la lista de la
+    // ventana con «Reintentar» y «Descartar» y no se reintenta solo.
+    function _altaHttp(e) { const m = /HTTP (\d{3})/.exec(String((e && e.message) || "")); return m ? +m[1] : 0; }
+    function _altaEsPermanente(e) { const c = _altaHttp(e); return c >= 400 && c < 500 && c !== 401 && c !== 408 && c !== 429; }
+    function _altaExpSeguro(exp) { return toSafeString(exp).replace(/\s+/g, "").replace(/[^A-Za-z0-9._-]+/g, "-") || "SINEXP"; }
+    // Idempotente: misma ruta (mismo it.rel) → x-upsert:false y «ya existe» se ignora; la fila choca con el UNIQUE(storage_path)
+    // (HTTP 409) y también se ignora. Reintentar un elemento de la cola nunca duplica el objeto ni la fila.
+    async function _altaSubir(it, bytes) {
+      const path = it.patient_id + "/" + it.rel;
+      const url = SUPA_URL + "/storage/v1/object/" + ALTA_BUCKET + "/" + path.split("/").map(encodeURIComponent).join("/");
+      const r = await _sFetch(url, { method: "POST", headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + (_userAccessToken || SUPA_KEY), "Content-Type": ALTA_DOCX_MIME, "x-upsert": "false", "cache-control": "3600" }, body: bytes });
+      if (!r.ok) {
+        const t = await r.text().catch(function () { return ""; });
+        // Ya estaba (un reintento después de una subida que sí llegó): se sigue con la fila.
+        if (!(r.status === 409 || (r.status === 400 && /Duplicate|already exists|"409"/i.test(t)))) throw new Error("Storage HTTP " + r.status + " " + t.slice(0, 160));
+      }
+      // creado_por es solo la etiqueta visible; la autoría verificable es altas_docs.creado_uid (default auth.uid(), la
+      // política de INSERT exige que sea el del token).
+      let por = ""; try { por = (localStorage.getItem("pl_user_name") || "").trim(); } catch (_) {}
+      try {
+        await _sPost("altas_docs", { patient_id: it.patient_id, exp: toSafeString(it.exp), nombre: toSafeString(it.nombre), fecha: it.fecha, storage_path: path, creado_por: por });
+      } catch (e) { if (!/HTTP 409/.test(String(e && e.message))) throw e; }
+      return path;
+    }
+    function _altaColaLoad() { try { const q = JSON.parse(localStorage.getItem(ALTA_COLA_KEY) || "[]"); return Array.isArray(q) ? q.filter(function (x) { return x && x.id && x.b64; }) : []; } catch (_) { return []; } }
+    function _altaColaSave(q) { try { if (q.length) localStorage.setItem(ALTA_COLA_KEY, JSON.stringify(q)); else localStorage.removeItem(ALTA_COLA_KEY); return true; } catch (e) { safeLog("cola de altas:", e); return false; } }
+    function _altaBytesDeB64(b64) { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+    async function _altaEncolar(it, b64) {
+      b64 = toSafeString(b64);
+      if (!b64 || b64.length * 3 / 4 > ALTA_COLA_MAX_ITEM) return false;
+      const q = _altaColaLoad().filter(function (x) { return x.id !== it.id; });
+      const total = q.reduce(function (s, x) { return s + toSafeString(x.b64).length; }, 0);
+      if (total + b64.length > ALTA_COLA_MAX_TOTAL) return false;
+      q.push(Object.assign({}, it, { b64: b64 }));
+      return _altaColaSave(q);
+    }
+    function _altaPacienteDeCola(it) { return patients.find(function (x) { return pid(x) === it.key || (it.exp && toSafeString(x.exp).trim() === it.exp); }) || null; }
+    // Caducidad de la cola (el .docx lleva datos personales y el iPad es compartido): fuera lo de más de 7 días, lo que ya
+    // llevó 20 intentos y lo que no tiene patient_id cuyo paciente ya no está en el censo después de 24 h. Se avisa cuántas
+    // se descartaron (el Word se descargó en el dispositivo al generarlo).
+    function _altaColaPurgar() {
+      const q = _altaColaLoad(); if (!q.length) return 0;
+      const ahora = Date.now();
+      const sigue = q.filter(function (it) {
+        const edad = ahora - (Number(it.ts) || 0);
+        if (edad > ALTA_COLA_MAX_DIAS * 864e5) return false;
+        if ((Number(it.intentos) || 0) >= ALTA_COLA_MAX_INTENTOS) return false;
+        if (!it.patient_id && patients.length && edad > ALTA_COLA_SIN_PACIENTE_MS && !_altaPacienteDeCola(it)) return false;
+        return true;
+      });
+      const n = q.length - sigue.length;
+      if (n) {
+        _altaColaSave(sigue);
+        safeLog("cola de altas: " + n + " descartada(s) por caducidad");
+        try { if (typeof _plToast === "function") _plToast("⚠️ Se descart" + (n === 1 ? "ó 1 nota de alta" : "aron " + n + " notas de alta") + " de la cola de este iPad sin subir a Drive (más de " + ALTA_COLA_MAX_DIAS + " días, " + ALTA_COLA_MAX_INTENTOS + " intentos o el paciente ya no está). El Word se había descargado al generarla.", "#b45309", 9000); } catch (_) {}
+      }
+      return n;
+    }
+    let _altaSubiendo = false;
+    async function _altaColaSubir() {
+      if (_altaSubiendo || !navigator.onLine) return 0;
+      _altaColaPurgar();
+      // Solo los de la cuenta con sesión (nunca se sube lo de otra cuenta con este token), sin error permanente y sin
+      // espera pendiente (reintento con espera creciente: 1, 2, 4… hasta 30 min).
+      const yo = myUserId(), ahora = Date.now();
+      const q = _altaColaLoad().filter(function (it) { return !it.permanente && toSafeString(it.uid) === yo && !(Number(it.prox) > ahora); });
+      if (!q.length) return 0;
+      _altaSubiendo = true; let n = 0, ultimo = null, fallo = false;
+      try {
+        for (let i = 0; i < q.length; i++) {
+          const it = q[i];
+          if (!it.patient_id) {
+            // Paciente que aún no subía a la nube cuando se guardó el alta: se busca de nuevo (por clave o por expediente).
+            const p = _altaPacienteDeCola(it);
+            if (!p || !p._supa_id) continue;
+            it.patient_id = p._supa_id;
+          }
+          try {
+            const path = await _altaSubir(it, _altaBytesDeB64(it.b64));
+            _altaColaSave(_altaColaLoad().filter(function (x) { return x.id !== it.id; }));
+            n++; ultimo = { key: it.key, path: path };
+          } catch (e) {
+            const red = _altaEsRed(e), perm = !red && _altaEsPermanente(e); fallo = true;
+            const cur = _altaColaLoad(), x = cur.find(function (y) { return y.id === it.id; });
+            if (x) {
+              // Un corte de red no cuenta como intento (para eso está la caducidad de 7 días).
+              if (!red) x.intentos = (Number(x.intentos) || 0) + 1;
+              x.error = String((e && e.message) || e).replace(/\s+/g, " ").slice(0, 120); x.patient_id = it.patient_id;
+              if (perm) x.permanente = true;
+              else if (!red) x.prox = Date.now() + Math.min(30 * 60000, 60000 * Math.pow(2, Math.max(0, x.intentos - 1)));
+              _altaColaSave(cur);
+            }
+            if (red) break;
+          }
+        }
+      } finally { _altaSubiendo = false; }
+      if (n) {
+        try { if (typeof _plToast === "function") _plToast("☁️ " + n + (n === 1 ? " nota de alta guardada sin red ya se subió" : " notas de alta guardadas sin red ya se subieron") + "; aparecerán en Drive en ≤5 min", "#15803d", 5000); } catch (_) {}
+        if (_altaKey && ultimo && ultimo.key === _altaKey) { _altaUltimoPath = ultimo.path; _altaEstado("✅ Subido; aparecerá en Drive en ≤5 min.", "ok"); }
+      }
+      if (_altaKey && (n || fallo)) _altaListar(_altaKey);
+      return n;
+    }
+    function altaColaReintentar(id) {
+      const q = _altaColaLoad(), x = q.find(function (y) { return y.id === id; }); if (!x) return;
+      delete x.permanente; delete x.prox; x.intentos = 0;
+      _altaColaSave(q);
+      _altaColaSubir().then(function () { if (_altaKey) _altaListar(_altaKey); });
+    }
+    function altaColaDescartar(id) {
+      if (!confirm("¿Descartar esta nota de alta de la cola de este iPad?\n\nNo se subirá a Drive (el Word ya se había descargado en este dispositivo).")) return;
+      _altaColaSave(_altaColaLoad().filter(function (y) { return y.id !== id; }));
+      if (_altaKey) _altaListar(_altaKey);
+    }
+    // Un solo «Guardar en Drive» a la vez (revisión 25 nov 2026): el doble toque con la red lenta subía el Word dos veces.
+    // El candado cubre generar, subir y encolar; los botones Descargar y Drive se deshabilitan mientras dura.
+    let _altaGuardando = false;
+    function _altaBotones(on) { ["alta-descargar", "alta-drive"].forEach(function (t) { const b = document.querySelector('[data-testid="' + t + '"]'); if (b) b.disabled = !on; }); }
+    async function altaGuardarDrive() {
+      const k = _altaKey; if (!k || _altaGuardando) return;
+      _altaGuardando = true; _altaBotones(false);
+      try { await _altaGuardarDrive(k); } finally { _altaGuardando = false; _altaBotones(true); }
+    }
+    async function _altaGuardarDrive(k) {
+      const p = patients.find(function (x) { return pid(x) === k; });
+      const r = await _altaGenerar(); if (!r) return;
+      const d = r.d, iso = _altaIsoEgreso(d), ms = Date.now();
+      const it = { id: "al" + ms.toString(36) + Math.random().toString(36).slice(2, 6), key: k, patient_id: (p && p._supa_id) || "", uid: myUserId(),
+        exp: toSafeString(d.exp).trim(), nombre: _altaUp(d.nombre), fecha: iso, rel: iso + "_" + _altaExpSeguro(d.exp) + "_" + ms + ".docx", ts: ms, intentos: 0 };
+      let err = null;
+      if (navigator.onLine && it.patient_id) {
+        _altaEstado("⏳ Subiendo…");
+        try {
+          _altaUltimoPath = await _altaSubir(it, r.u8);
+          _altaEstado("✅ Subido; aparecerá en Drive en ≤5 min. El Word también se descargó en este dispositivo.", "ok");
+          _altaListar(k);
+          return;
+        } catch (e) { err = e; safeLog("alta subir:", e); }
+      }
+      const perm = !!err && !_altaEsRed(err) && _altaEsPermanente(err);
+      if (err) { it.intentos = 1; it.error = String((err && err.message) || err).replace(/\s+/g, " ").slice(0, 120); if (perm) it.permanente = true; else if (!_altaEsRed(err)) it.prox = Date.now() + 60000; }
+      const ok = await _altaEncolar(it, r.b64).catch(function () { return false; });
+      if (!ok) { _altaEstado("⚠️ No se pudo subir ni guardar en la cola de este iPad (sin espacio). El Word ya se descargó: vuelve a tocar ☁️ Guardar en Drive cuando haya red.", "err"); return; }
+      const sinRed = !navigator.onLine || (err && _altaEsRed(err));
+      _altaEstado(sinRed ? "📴 Sin conexión: el Word ya se descargó y quedó en cola en este iPad; se sube solo al volver la red."
+        : (!it.patient_id ? "⏳ El paciente aún no está en la nube: el Word ya se descargó y se sube en cuanto se sincronice."
+          : perm ? "⚠️ No se pudo subir (" + String((err && err.message) || err).slice(0, 90) + "). Es un error que no se arregla solo (permisos, o falta crear el bucket o la tabla): no se reintenta; en la lista de abajo puedes «Reintentar» o «Descartar». El Word ya se descargó."
+          : "⚠️ No se pudo subir (" + String((err && err.message) || err).slice(0, 90) + "). Quedó en cola en este iPad y se reintenta solo."), sinRed || !it.patient_id ? "warn" : "err");
+      _altaListar(k);
+    }
+    function _altaLinkSeguro(u) { const s = toSafeString(u).trim(); return /^https:\/\/(drive|docs)\.google\.com\//.test(s) ? s : ""; }
+    async function _altaListar(k) {
+      const host = document.getElementById("alta-lista"); if (!host || _altaKey !== k) return;
+      const p = patients.find(function (x) { return pid(x) === k; });
+      const yo = myUserId();
+      const cola = _altaColaLoad().filter(function (it) { return toSafeString(it.uid) === yo && (it.key === k || (p && p._supa_id && it.patient_id === p._supa_id)); });
+      let rows = [], err = "";
+      if (p && p._supa_id && navigator.onLine) {
+        try { rows = await _sGet("altas_docs", "select=id,fecha,storage_path,creado_en,creado_por,drive_url,error&patient_id=eq." + encodeURIComponent(p._supa_id) + "&order=creado_en.desc&limit=20"); if (!Array.isArray(rows)) rows = []; }
+        catch (e) { err = "No se pudo leer la lista (" + String((e && e.message) || e).slice(0, 60) + ")."; }
+      } else if (!navigator.onLine) err = "Sin conexión: la lista se ve al volver la red.";
+      if (_altaKey !== k) return;
+      const fmt = function (iso) { const t = new Date(iso); return isNaN(t) ? "" : _altaZ(t.getDate()) + "/" + _altaZ(t.getMonth() + 1) + " " + _altaZ(t.getHours()) + ":" + _altaZ(t.getMinutes()); };
+      const html = [];
+      cola.forEach(function (it) {
+        if (it.permanente) {
+          html.push('<div class="alta-row" data-testid="alta-row-cola-error">⚠️ ' + esc(it.fecha) + " · no se pudo subir: " + esc(toSafeString(it.error).slice(0, 100))
+            + ' <button type="button" class="alta-mini" data-colaid="' + esc(it.id) + '" onclick="altaColaReintentar(this.dataset.colaid)" data-testid="alta-cola-reintentar">↻ Reintentar</button>'
+            + ' <button type="button" class="alta-mini" data-colaid="' + esc(it.id) + '" onclick="altaColaDescartar(this.dataset.colaid)" data-testid="alta-cola-descartar">✕ Descartar</button></div>');
+        } else html.push('<div class="alta-row" data-testid="alta-row-cola">📴 ' + esc(it.fecha) + " · en cola en este iPad" + (it.intentos ? " (" + it.intentos + " intento" + (it.intentos === 1 ? "" : "s") + ")" : "") + " · se sube al volver la red</div>");
+      });
+      rows.forEach(function (r) {
+        const link = _altaLinkSeguro(r.drive_url);
+        html.push('<div class="alta-row" data-testid="alta-row">📄 ' + esc(toSafeString(r.fecha)) + (r.creado_en ? " · " + esc(fmt(r.creado_en)) : "") + (r.creado_por ? " · " + esc(r.creado_por) : "") + " · "
+          + (link ? '<a href="' + esc(link) + '" target="_blank" rel="noopener" data-testid="alta-row-link">📂 Abrir en Drive</a>'
+            : (r.error ? '<span style="color:#b91c1c">⚠️ No pasó a Drive: ' + esc(toSafeString(r.error).slice(0, 100)) + "</span>" : "⏳ pasando a Drive (≤5 min)")) + "</div>");
+      });
+      if (!html.length) html.push('<div style="color:#94a3b8">' + esc(err || "Todavía no hay altas guardadas de este paciente.") + "</div>");
+      else if (err) html.push('<div style="color:#94a3b8">' + esc(err) + "</div>");
+      host.innerHTML = html.join("");
+      // La que se acaba de subir ya tiene su enlace: se muestra en el estado.
+      if (_altaUltimoPath) {
+        const r = rows.find(function (x) { return x.storage_path === _altaUltimoPath; });
+        const link = r && _altaLinkSeguro(r.drive_url);
+        if (link) { _altaEstado("✅ Ya está en Drive.", "ok", link); _altaUltimoPath = ""; }
+      }
+      // Mientras haya alguna reciente sin enlace o algo reintentable en la cola, se vuelve a preguntar cada 30 s (solo con
+      // la ventana abierta). Lo marcado con error permanente no cuenta.
+      clearTimeout(_altaPollT); _altaPollT = null;
+      const falta = rows.some(function (r) { return !r.drive_url && !r.error && Date.now() - Date.parse(r.creado_en || 0) < 20 * 60000; });
+      if (falta || cola.some(function (it) { return !it.permanente; })) _altaPollT = setTimeout(function () { if (_altaKey === k) { _altaColaSubir(); _altaListar(k); } }, 30000);
+    }
+    try {
+      window.addEventListener("online", function () { setTimeout(function () { _altaColaSubir(); }, 1500); });
+      setTimeout(function () { _altaColaSubir(); }, 8000);
+      setInterval(function () { if (navigator.onLine && localStorage.getItem(ALTA_COLA_KEY)) _altaColaSubir(); }, 60000);
+    } catch (_) {}
+
     // ─── ALTA WORD DOWNLOAD ─────────────────────────────────────────────────────────
     function _getAltaData(pk) {
       const fields = document.querySelectorAll(`[data-altakey="${pk}"]`);
@@ -31682,7 +32660,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.25-1";
+    const PL_BUILD = "2026.11.25-2";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;

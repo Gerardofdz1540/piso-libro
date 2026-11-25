@@ -14,6 +14,8 @@
  *   (atomica: solo escribe si nadie lo eligio antes; ver aplicarEgresosCenso_). Y (25 nov 2026, v2) la seccion
  *   PROCEDIMIENTOS de la hoja en la tabla censo_procedimientos, para el seguimiento de los operados (ver
  *   guardarProcedimientosCenso_). Ninguna de las dos cambia que pacientes se sincronizan.
+ *   Y (25 nov 2026, v3) copia a Google Drive las altas en Word que la app sube al bucket «altas» de Supabase
+ *   (tabla altas_docs; ver pasarAltasADrive_): solo lee ese bucket y escribe drive_* / error en altas_docs.
  *
  * SEGURIDAD: la SERVICE KEY de Supabase vive SOLO en Script Properties (clave SUPABASE_KEY),
  *   nunca en la hoja ni en el repo. El censo (PHI) viaja de este script a Supabase autenticado por
@@ -33,7 +35,7 @@
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
 // pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
 // Cambiarla en cada cambio del archivo.
-var CENSO_SYNC_VERSION = '2026.11.25.2';
+var CENSO_SYNC_VERSION = '2026.11.25.3';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
@@ -147,6 +149,8 @@ function doSync(opts) {
   aplicarEgresosCenso_(key, parsed._egresos, parsed);
   // 4) Sección PROCEDIMIENTOS → censo_procedimientos (25 nov 2026, v2). Nunca rompe el sync.
   guardarProcedimientosCenso_(key, parsed._procedimientos, parsed._fechaCenso, parsed._fechaCensoRespaldo);
+  // 5) Altas (.docx) que la app subió a Storage → Google Drive (25 nov 2026, v3). Nunca rompe el sync.
+  try { pasarAltasADrive_(key); } catch (_) { /* pasarAltasADrive_ ya atrapa sus errores */ }
   reportarVersion_(key, 'censo-sync', CENSO_SYNC_VERSION);
   return { capturados: dd.rows.length, upserts: _censoWriteStats_.upserts, sin_cambios: _censoWriteStats_.unchanged, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
@@ -1788,6 +1792,181 @@ function guardarProcedimientosCenso_(key, procs, fecha, respaldo) {
     Logger.log('Procedimientos del censo: error (' + (e && e.name ? e.name : 'Error') + '); se reintenta en la próxima corrida.');
     return null;
   }
+}
+
+// --- ALTAS (.docx) -> GOOGLE DRIVE (25 nov 2026, v3) ---------------------------------------------
+// La app genera el alta en Word con el machote del servicio, la sube al bucket privado «altas» de Supabase
+// Storage y registra una fila en public.altas_docs (scripts/supabase_altas.sql). Al final de cada sincronización
+// exitosa, pasarAltasADrive_ toma las filas sin drive_file_id (ALTAS_DRIVE_MAX por corrida, las más viejas
+// primero; las que ya fallaron van después de las nuevas), descarga cada objeto con la service key, crea el
+// archivo en Drive del dueño del script dentro de «Altas · Piso Libro» / «AAAA-MM» y escribe drive_file_id,
+// drive_url y drive_en. Si algo falla, PATCH error (texto corto sin datos personales) y sigue con la siguiente.
+// Nunca rompe la sincronización del censo; el log solo lleva conteos.
+var ALTAS_DRIVE_MAX = 10;
+// Reintentos por fila (revisión 25 nov 2026, 2.ª vuelta): un error PERMANENTE (ruta inválida, o el objeto no existe:
+// descarga 4xx que no sea 401/403/408/429) marca la fila como definitiva al primer intento (intentos =
+// ALTAS_DRIVE_DEFINITIVO) y no se vuelve a pedir. Uno PASAJERO (excepción de Drive, 5xx, 401/403 de la llave, PATCH
+// fallido) NO abandona la fila por conteo: suma 1 a intentos, guarda ultimo_intento y espera cada vez más
+// (5, 10, 20… hasta 360 min desde el último intento). Solo se da por perdida si lleva más de ALTAS_DRIVE_TOPE_HORAS
+// desde creado_en y al menos ALTAS_DRIVE_MIN_INTENTOS intentos (antes: 5 fallos en 25 min la abandonaban, p. ej. un
+// rato sin permiso de Drive o con la llave rotada).
+var ALTAS_DRIVE_DEFINITIVO = 99;        // intentos con este valor = no se reintenta (un pasajero no llega: ~20 en 72 h)
+var ALTAS_DRIVE_TOPE_HORAS = 72;
+var ALTAS_DRIVE_MIN_INTENTOS = 3;
+var ALTAS_DRIVE_ESPERA_MAX_MIN = 360;
+function altaEsperaMin_(n) { return Math.min(ALTAS_DRIVE_ESPERA_MAX_MIN, 5 * Math.pow(2, Math.max(0, (Number(n) || 0) - 1))); }
+/** ¿A una fila que ya falló le toca reintento? (ya pasó su espera desde ultimo_intento; sin ultimo_intento, sí). */
+function altaToca_(r, ahora) {
+  var n = Number(r && r.intentos) || 0;
+  if (n >= ALTAS_DRIVE_DEFINITIVO) return false;
+  var t = Date.parse(String((r && r.ultimo_intento) || ''));
+  return isNaN(t) || ahora - t >= altaEsperaMin_(n) * 60000;
+}
+/** Columnas del PATCH de una fila que falló. */
+function altaFallo_(r, err, ahora) {
+  var n = (Number(r && r.intentos) || 0) + 1, creado = Date.parse(String((r && r.creado_en) || ''));
+  var vieja = !isNaN(creado) && ahora - creado > ALTAS_DRIVE_TOPE_HORAS * 3600000 && n >= ALTAS_DRIVE_MIN_INTENTOS;
+  return { error: err, intentos: altaErrorPermanente_(err) || vieja ? ALTAS_DRIVE_DEFINITIVO : n, ultimo_intento: new Date(ahora).toISOString() };
+}
+function altaErrorPermanente_(err) {
+  var m = /^descarga_http_(\d{3})$/.exec(String(err || ''));
+  if (err === 'ruta_invalida') return true;
+  return !!m && +m[1] >= 400 && +m[1] < 500 && [401, 403, 408, 429].indexOf(+m[1]) < 0;
+}
+var ALTAS_DRIVE_CARPETA = 'Altas · Piso Libro';
+var ALTAS_FOLDER_PROP = 'ALTAS_FOLDER_ID';
+var ALTAS_DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+function pasarAltasADrive_(key) {
+  var st = { pendientes: 0, subidas: 0, errores: 0, reusadas: 0 };
+  try {
+    var filas = altasPendientes_(key);
+    if (filas === null) { Logger.log('Altas a Drive: no se pudo leer la cola; se reintenta en la próxima corrida.'); st.errores = 1; return st; }
+    st.pendientes = filas.length;
+    if (!filas.length) return st;
+    var carpetas = {};                              // caché de la corrida: raíz y meses (se crean una sola vez)
+    for (var i = 0; i < filas.length; i++) {
+      var r = filas[i], err = '';
+      try {
+        err = altaADrive_(key, r, carpetas, st);
+      } catch (e) {
+        err = 'drive_' + String(e && e.name ? e.name : 'Error').slice(0, 40);
+      }
+      if (err) {
+        st.errores++;
+        altasPatch_(key, r.id, altaFallo_(r, err, Date.now()));
+      }
+    }
+    Logger.log('Altas a Drive: ' + st.subidas + ' subidas' + (st.reusadas ? ' (' + st.reusadas + ' ya estaban en Drive)' : '')
+      + ', ' + st.errores + ' con error, de ' + st.pendientes + ' pendientes.');
+    return st;
+  } catch (e) {
+    Logger.log('Altas a Drive: error (' + (e && e.name ? e.name : 'Error') + '); se reintenta en la próxima corrida.');
+    return null;
+  }
+}
+
+/** Cola: primero las que nunca fallaron (las más viejas primero); si sobra lugar, las que fallaron, no son definitivas
+ *  (intentos < ALTAS_DRIVE_DEFINITIVO) y ya cumplieron su espera (altaToca_), la que lleva más sin intentarse primero.
+ *  Así un archivo roto no frena a los nuevos ni se pide cada 5 min. null = error. */
+function altasPendientes_(key) {
+  var base = SUPABASE_URL + '/rest/v1/altas_docs?select=id,patient_id,exp,nombre,fecha,storage_path,error,intentos,ultimo_intento,creado_en&drive_file_id=is.null';
+  var opts = { method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true };
+  var leer = function (filtro, n, orden) {
+    var res = UrlFetchApp.fetch(base + filtro + '&order=' + (orden || 'creado_en.asc') + '&limit=' + n, opts);
+    if (res.getResponseCode() !== 200) return null;
+    var a = JSON.parse(res.getContentText() || '[]');
+    return Array.isArray(a) ? a : null;
+  };
+  var nuevas = leer('&error=is.null', ALTAS_DRIVE_MAX);
+  if (nuevas === null) return null;
+  if (nuevas.length >= ALTAS_DRIVE_MAX) return nuevas.slice(0, ALTAS_DRIVE_MAX);
+  // Se leen más de las que caben (50) porque las que aún están en espera se filtran aquí.
+  var ahora = Date.now();
+  var fallidas = (leer('&error=not.is.null&intentos=lt.' + ALTAS_DRIVE_DEFINITIVO, 50, 'ultimo_intento.asc.nullsfirst') || [])
+    .filter(function (r) { return altaToca_(r, ahora); });
+  return nuevas.concat(fallidas).slice(0, ALTAS_DRIVE_MAX);
+}
+
+/** Sube una fila a Drive. Devuelve '' si quedó registrada o el código corto del error. */
+function altaADrive_(key, r, carpetas, st) {
+  var ruta = String(r && r.storage_path || '');
+  if (!r || !r.id || !/\.docx$/i.test(ruta) || ruta.charAt(0) === '/' || ruta.indexOf('..') !== -1 || ruta.indexOf('/') === -1) return 'ruta_invalida';
+  var fecha = validISODate_(String(r.fecha || '').slice(0, 10)) || hoyScript_();
+  var nombreArchivo = altaNombreArchivo_(r.exp, r.nombre, fecha);
+  var carpeta = altasCarpetaMes_(carpetas, fecha.slice(0, 7));
+  // Si una corrida anterior creó el archivo pero no alcanzó a registrar el PATCH, se reusa (no se duplica).
+  var previo = null;
+  try {
+    var it = carpeta.getFilesByName(nombreArchivo);
+    while (it.hasNext()) { var f = it.next(); if (String(f.getDescription() || '') === ruta) { previo = f; break; } }
+  } catch (_) { previo = null; }
+  var file = previo;
+  if (!file) {
+    var url = SUPABASE_URL + '/storage/v1/object/altas/' + ruta.split('/').map(encodeURIComponent).join('/');
+    var res = UrlFetchApp.fetch(url, { method: 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true });
+    var code = res.getResponseCode();
+    if (code !== 200) return 'descarga_http_' + code;
+    var blob = res.getBlob();
+    if (!blob || (blob.getBytes && !blob.getBytes().length)) return 'descarga_vacia';
+    blob.setName(nombreArchivo);
+    if (blob.setContentType) blob.setContentType(ALTAS_DOCX_MIME);
+    file = carpeta.createFile(blob);
+    try { file.setDescription(ruta); } catch (_) {}
+  } else {
+    st.reusadas++;
+  }
+  var ok = altasPatch_(key, r.id, { drive_file_id: file.getId(), drive_url: file.getUrl(), drive_en: new Date().toISOString(), error: null });
+  if (!ok) return 'registro_fallo';                // el archivo ya existe en Drive: la próxima corrida lo reusa
+  st.subidas++;
+  return '';
+}
+
+/** «ALTA <exp> <NOMBRE> <AAAA-MM-DD>.docx», sin caracteres que estorben en Drive. */
+function altaNombreArchivo_(exp, nombre, fecha) {
+  var limpio = function (s, max) {
+    return String(s == null ? '' : s).replace(/[\u0000-\u001f\/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  };
+  var partes = ['ALTA', limpio(exp, 40), limpio(nombre, 120).toUpperCase(), fecha].filter(function (x) { return x; });
+  return partes.join(' ') + '.docx';
+}
+
+/** Carpeta raíz (id en Script Properties) y la del mes, creadas una sola vez. */
+function altasCarpetaRaiz_(carpetas) {
+  if (carpetas.raiz) return carpetas.raiz;
+  var ps = PropertiesService.getScriptProperties();
+  var id = ps.getProperty(ALTAS_FOLDER_PROP), raiz = null;
+  if (id) {
+    try { raiz = DriveApp.getFolderById(id); if (raiz.isTrashed && raiz.isTrashed()) raiz = null; } catch (_) { raiz = null; }
+  }
+  if (!raiz) {
+    var it = DriveApp.getRootFolder().getFoldersByName(ALTAS_DRIVE_CARPETA);
+    while (it.hasNext()) { var f = it.next(); if (!(f.isTrashed && f.isTrashed())) { raiz = f; break; } }
+    if (!raiz) raiz = DriveApp.createFolder(ALTAS_DRIVE_CARPETA);   // en la raíz de Mi unidad del dueño
+    ps.setProperty(ALTAS_FOLDER_PROP, raiz.getId());
+  }
+  carpetas.raiz = raiz;
+  return raiz;
+}
+function altasCarpetaMes_(carpetas, mes) {
+  if (carpetas[mes]) return carpetas[mes];
+  var raiz = altasCarpetaRaiz_(carpetas), it = raiz.getFoldersByName(mes), f = null;
+  while (it.hasNext()) { var c = it.next(); if (!(c.isTrashed && c.isTrashed())) { f = c; break; } }
+  carpetas[mes] = f || raiz.createFolder(mes);
+  return carpetas[mes];
+}
+
+/** PATCH de una fila de altas_docs (solo si sigue sin drive_file_id). true si la base lo aceptó. */
+function altasPatch_(key, id, cols) {
+  try {
+    var res = UrlFetchApp.fetch(SUPABASE_URL + '/rest/v1/altas_docs?id=eq.' + encodeURIComponent(id) + '&drive_file_id=is.null', {
+      method: 'patch', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' },
+      payload: JSON.stringify(cols)
+    });
+    var code = res.getResponseCode();
+    return code >= 200 && code < 300;
+  } catch (_) { return false; }
 }
 
 // --- WATCHDOG DE LABORATORIOS --------------------------------------------------------------------
