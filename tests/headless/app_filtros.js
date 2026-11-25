@@ -105,7 +105,7 @@ const wlRow = () => ({ exp: '26-70001', paciente: 'ANA DIAZ RIOS', fecha: TODAY,
   await page.click('[data-testid="flt-libres"]');
   e = await estado();
   const f7 = await page.evaluate(() => ({ grupos: Array.from(document.querySelectorAll('.fl-grp-h')).map(x => x.textContent), ingresos: showSoloIngresos }));
-  check('F7 🛏 Libres: 44 camas libres agrupadas por servicio (Piso, UCIA, otras) y se apaga «Ingresos»', e.libres === 44 && f7.grupos.join('|') === 'Piso · 40|UCIA · 3|Recuperación · 1' && !f7.ingresos, JSON.stringify({ e, f7 }));
+  check('F7 🛏 Libres: 44 camas libres agrupadas por servicio en el orden del censo (Piso, Recuperación, UCIA) y se apaga «Ingresos»', e.libres === 44 && f7.grupos.join('|') === 'Piso · 40|Recuperación · 1|UCIA · 3' && !f7.ingresos, JSON.stringify({ e, f7 }));
   await elegir('flt-servicio', 'UCIA');
   e = await estado();
   const f8c = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="libre-bed"]')).map(x => x.dataset.cama).join());
