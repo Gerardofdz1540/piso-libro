@@ -29,7 +29,8 @@ residente, ingreso, dias, estado, seccion, es_mio`. **Jamás** edita la tabla `n
 clínicas. El UPSERT es `ON CONFLICT (cama) DO UPDATE` de solo esas columnas → el `id` de la fila
 no cambia, así que las notas clínicas siguen ligadas e intactas (verificado contra la BD real).
 Única excepción (25 nov 2026): el motivo del egreso en la copia de `archive`, solo si nadie lo eligió
-(ver «Motivo del egreso desde ALTAS / DEFUNCIONES»).
+(ver «Motivo del egreso desde ALTAS / DEFUNCIONES»). Y (versión 2026.11.25.3) `drive_*` / `error` en
+`altas_docs` al copiar a Drive las altas en Word que sube la app (ver «Altas en Word → Google Drive»).
 
 ## Reconciliación (Supabase refleja la hoja) — sin perder notas
 
@@ -165,6 +166,45 @@ tablero no cambian), pero al final de cada sincronización exitosa `guardarProce
 - Google no guarda los censos viejos: solo hay datos desde que se instaló esta versión (25 nov 2026). El
   registro de pacientes los copia a sus pestañas «Procedimientos del censo» y «Seguimiento de operados»
   (ver REGISTRO.md).
+
+## Altas en Word → Google Drive (versión 2026.11.25.3)
+
+En la tarjeta del paciente, la app arma el alta en Word (.docx) con el machote del servicio, la descarga en el
+dispositivo y, con «Guardar en Drive», la sube al bucket **privado** `altas` de Supabase Storage
+(`<patient_id>/<AAAA-MM-DD>_<exp>_<epoch ms>.docx`) y registra una fila en `public.altas_docs`
+(scripts/supabase_altas.sql). Al final de cada sincronización exitosa `pasarAltasADrive_`:
+
+- Lee la cola `altas_docs` con `drive_file_id` vacío, **10 por corrida**, las más viejas primero
+  (`order=creado_en.asc`). Primero las que nunca fallaron y, si sobra lugar, las que ya tienen `error`: un archivo
+  roto no frena a los nuevos.
+- Descarga el objeto (`GET /storage/v1/object/altas/<ruta>` con la service key) y crea el archivo en **Mi unidad**
+  del dueño del script, en `Altas · Piso Libro` / `AAAA-MM` (mes de la fecha del alta). Las carpetas se crean una
+  sola vez; el id de la raíz queda en la Script Property `ALTAS_FOLDER_ID` (si la borras o la mandas a la
+  papelera, se busca por nombre en la raíz o se crea otra). Nombre: `ALTA <exp> <NOMBRE> <AAAA-MM-DD>.docx`; la
+  descripción del archivo es la ruta del objeto.
+- `PATCH altas_docs` (`drive_file_id`, `drive_url`, `drive_en`, `error = null`), solo si la fila sigue sin
+  `drive_file_id`. La app recibe el enlace por Realtime.
+- Si una fila falla, `PATCH error` con un código corto sin datos personales (`descarga_http_404`, `descarga_vacia`,
+  `ruta_invalida`, `drive_<tipo de error>`, `registro_fallo`) y sigue con la siguiente. Un error **permanente**
+  (ruta inválida u objeto inexistente: 4xx que no sea 401/403/408/429) deja la fila **definitiva** al primer intento
+  (`intentos = 99`). Uno **pasajero** (Drive, 5xx, 401/403 de la llave, PATCH fallido) suma 1 a `intentos`, guarda
+  `ultimo_intento` y se reintenta con espera creciente (5, 10, 20… hasta 360 min desde el último intento); solo se da
+  por perdido con más de **72 h** desde `creado_en` y al menos 3 intentos. Para volver a pedir una fila definitiva:
+  `update altas_docs set intentos = 0, ultimo_intento = null where id = …`. Si el archivo se creó pero el PATCH falló, la siguiente corrida **reusa** ese archivo (mismo
+  nombre y descripción en la carpeta del mes) en vez de duplicarlo.
+- **Nunca** rompe la sincronización del censo y el log solo lleva conteos
+  («Altas a Drive: 2 subidas, 0 con error, de 2 pendientes»).
+
+**Permisos de Google**: el script ya usaba `DriveApp` (solo lectura: fecha de modificación del Doc de
+indicaciones). Crear carpetas y archivos requiere el alcance completo de Drive
+(`https://www.googleapis.com/auth/drive`). Si el proyecto solo tenía concedido `drive.readonly`, al pegar esta
+versión Google pedirá **una vez** el permiso nuevo («Ver, editar, crear y borrar todos tus archivos de Google
+Drive»): ejecuta `doSyncScheduled` a mano desde el editor y acepta. Hasta que se acepte, las altas quedan en la
+cola con `error = drive_Exception` (el censo se sigue sincronizando). Se puede revisar en el editor → Información
+general → Alcances de OAuth del proyecto.
+
+Requiere aplicar antes `scripts/supabase_altas.sql` (bucket, tabla, políticas y Realtime). Sin la tabla, la
+lectura de la cola falla, el log dice «no se pudo leer la cola» y el sync sigue igual.
 
 ## Watchdog de laboratorios
 

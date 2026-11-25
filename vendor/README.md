@@ -26,6 +26,12 @@ coincide). Fecha = día en que se bajó el archivo.
 
 Para comprobar lo que hay en el repo: `sha256sum vendor/*.js` y comparar con la tabla.
 
+Imagen (no es librería): `alta-encabezado.png` (1636×290, 25-nov-2026, sha256
+`64ea0d7da17d79c575e307a2e66758818a6b31557860df83792b39842198f306`) es el encabezado del formato «NOTA DE ALTA O
+EGRESO HOSPITALARIO» del hospital (logo + recuadro), tomado tal cual del encabezado del formato en Word. La usa la 📄 Nota
+de alta para armar el .docx; `sw.js` la precachea en `OPTIONAL`. Si el hospital cambia el formato, se agrega con otro
+nombre (mismo motivo que las librerías: cache-first por nombre) y se cambia en `index.html` (`_altaEncabezado`) y `sw.js`.
+
 Historial:
 
 - 19-oct-2026: SheetJS 0.18.5 → 0.20.3. La 0.18.5 (que venía de

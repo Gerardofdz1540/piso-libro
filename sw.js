@@ -77,7 +77,11 @@ const SHELL = [
 const OPTIONAL = [
   './vendor/xlsx-0.20.3.full.min.js',
   './vendor/exceljs-4.4.0.min.js',
-  './vendor/docx-8.5.0.umd.js'
+  './vendor/docx-8.5.0.umd.js',
+  // Encabezado de la 📄 Nota de alta (25 nov 2026): logo del hospital + recuadro del formato, para armar el Word sin red.
+  // Sin subir VERSION: los equipos con este SW ya instalado lo guardan la primera vez que arman un alta (cache-first de
+  // abajo) y lo precachean con la siguiente versión.
+  './vendor/alta-encabezado.png'
 ];
 
 // Precache siempre desde el servidor, sin la caché HTTP del navegador (20 oct 2026): GitHub Pages sirve todo con
