@@ -1951,8 +1951,9 @@ const egresado = (id, sid, nombre, exp, ingreso, archivado, extraPd, nd, extra) 
   check("C7b los egresos sin motivo van primero (el más reciente arriba) y después los demás",
     JSON.stringify(filas.map((x) => x["ID episodio"])) === JSON.stringify(["t5", "t4", "t2"]), JSON.stringify(filas.map((x) => x["ID episodio"])));
   const R = Object.fromEntries(tab(st.ss, "Resumen mensual").map((x) => [x["Mes"], x]));
-  check("C7c la talla se reporta solo como cobertura: «Ingresos sin talla (n)» del mes (octubre: 1 de 3) y ya no cuenta en «Ingresos con datos incompletos (n)»",
-    R["2026-10"]["Ingresos sin talla (n)"] === 1 && R["2026-10"]["Ingresos (n)"] === 3 && R["2026-10"]["Ingresos con datos incompletos (n)"] === 1 && R["2026-08"]["Ingresos sin talla (n)"] === 2, JSON.stringify([R["2026-10"], R["2026-08"]]));
+  // 25 nov 2026: la talla ya no se mide: la columna se queda en su lugar (la hoja real ya la tiene) pero vacía.
+  check("C7c «Ingresos sin talla (n)» sigue en su lugar pero vacía (ya no se mide) y la talla no cuenta en «Ingresos con datos incompletos (n)»",
+    R["2026-10"]["Ingresos sin talla (n)"] === "" && R["2026-10"]["Ingresos (n)"] === 3 && R["2026-10"]["Ingresos con datos incompletos (n)"] === 1 && R["2026-08"]["Ingresos sin talla (n)"] === "", JSON.stringify([R["2026-10"], R["2026-08"]]));
   check("C7d respaldo «…_fecha_inicio» cuando no viene «…_inicio»: antibiótico y ayuno «desde AAAA-MM-DD»",
     P.t3["Antibiótico"] === "ERTAPENEM, desde 2026-10-26" && P.t3["Dieta y NPO"] === "NPO desde 2026-10-27", JSON.stringify([P.t3["Antibiótico"], P.t3["Dieta y NPO"]]));
   const vars = makeSandbox({ db: VACIO() }).sb.regVariables_();
@@ -3157,6 +3158,124 @@ const AEV = "Eventos adversos", AAB = "Análisis · Antibióticos", ACO = "Compl
   check("V6d al haber espacio de nuevo, la corrida siguiente vuelve a leer WinLab desde donde se quedó y escribe el reporte que faltaba; ya no lanza", rO2.ok && tab(O.ss, "Labs del robot (WinLab)").length === 2 && O.props.REG_CURSOR_winlab_labs !== cursorO, JSON.stringify(rO2.avisos));
   check("V6e el aviso de celdas sale desde el 50 % (antes 70 %) y la pausa desde el 95 %", makeSandbox({ db: VACIO() }).sb.REG_CELDAS_AVISO === 0.5 && makeSandbox({ db: VACIO() }).sb.REG_CELDAS_CRITICO === 0.95
     && makeSandbox({ db: VACIO() }).sb.regEsLimiteCeldas_(new Error("Exception: This action would increase the number of cells in the workbook above the limit of 10000000 cells.")) && !makeSandbox({ db: VACIO() }).sb.regEsLimiteCeldas_(new Error("Exception: Service Spreadsheets timed out")));
+}
+
+// ─── N: 25 nov 2026 — sexo inferido del nombre, talla que ya no se mide y motivo de egreso tomado del censo. FICTICIOS. ──
+{
+  const { sb } = makeSandbox({ db: VACIO() });
+  const S = (n) => sb.regSexoDeNombre(n);
+  check("N1a diccionario: nombres de pila frecuentes de hombre y de mujer; abreviaturas «MA.», «MA», «Ma.» = María (F)",
+    S("JUAN PRUEBA FICTICIO") === "M" && S("ANA PRUEBA FICTICIA") === "F" && S("Ma. Ficticia Prueba") === "F" && S("MA FICTICIA PRUEBA") === "F" && S("MA. DE LOS ANGELES PRUEBA") === "F"
+    && S("josé luis prueba ficticio") === "M" && S("MARÍA PRUEBA") === "F", [S("Ma. Ficticia Prueba"), S("MA. DE LOS ANGELES PRUEBA")].join("|"));
+  check("N1b compuestos: el primero manda (JOSE MARIA = M, MARIA JOSE = F, MA. GUADALUPE = F); ambiguo primero → decide el segundo; ambiguo solo → vacío",
+    S("JOSE MARIA PRUEBA FICTICIO") === "M" && S("MARIA JOSE PRUEBA FICTICIA") === "F" && S("MA. GUADALUPE PRUEBA") === "F" && S("GUADALUPE ANTONIO PRUEBA") === "M"
+    && S("ROSARIO ISABEL PRUEBA") === "F" && S("GUADALUPE PRUEBA FICTICIA") === "" && S("TRINIDAD") === "" && S("REFUGIO PRUEBA") === "", [S("GUADALUPE ANTONIO PRUEBA"), S("GUADALUPE PRUEBA FICTICIA")].join("|"));
+  check("N1c iniciales («J.»), nombres fuera de la lista y sin nombre dan vacío; NUNCA se adivina por la terminación",
+    S("J. PRUEBA FICTICIO") === "" && S("J GUADALUPE PRUEBA") === "" && S("FICTICIANA PRUEBA") === "" && S("ZZORBANO PRUEBA") === "" && S("") === "" && S(null) === ""
+    && S("DESCONOCIDO MASCULINO") === "" && S("RN DE MARIA PRUEBA") === "", [S("FICTICIANA PRUEBA"), S("RN DE MARIA PRUEBA")].join("|"));
+  check("N1d APELLIDOS primero: se saltan los apellidos frecuentes (y su inicial) hasta el nombre; si no es concluyente, vacío",
+    S("RODRIGUEZ S. ANA") === "F" && S("PEREZ N JUAN") === "M" && S("RODRIGUEZ S. MARIA") === "" && S("GARCIA LOPEZ JUAN CARLOS") === "M" && S("HERNANDEZ PEREZ") === "" && S("RODRIGUEZ S FICTICIANO") === ""
+    && S("SANTIAGO LOPEZ MARIA") === "" && S("CRUZ HERNANDEZ JUAN") === "", [S("RODRIGUEZ S. ANA"), S("RODRIGUEZ S. MARIA"), S("SANTIAGO LOPEZ MARIA")].join("|"));
+  // Revisión del 25 nov 2026 (combinaciones FICTICIAS de nombres y apellidos comunes).
+  const tabla = (casos) => casos.filter(([n, e]) => S(n) !== e).map(([n, e]) => n + " → " + JSON.stringify(S(n)) + " (esperado " + JSON.stringify(e) + ")");
+  const g = tabla([["LOPEZ SANTIAGO MARIA", ""], ["GARCIA LEON ANA", ""], ["PEREZ SANTOS MARIA GUADALUPE", ""], ["HERNANDEZ MARTIN ROSA", ""], ["LOPEZ SALVADOR ROSA", ""],
+    ["LOPEZ NICOLAS MARIA", ""], ["RAMIREZ FELIPE MARIA", ""], ["MORALES ISIDRO ANA", ""], ["HERNANDEZ AMADOR MARIA", ""], ["SANTIAGO ZAMUDIO MARIA", ""],
+    ["MARTIN ZUNIGA ANA", ""], ["ROSA ZUNIGA JUAN", ""], ["LOPEZ SANTIAGO JUAN", "M"], ["GARCIA MERCED JUAN", "M"]]);
+  check("N1g apellido que también es nombre de pila seguido de un nombre del OTRO sexo (con apellidos primero o no): vacío; del mismo sexo: ese sexo", g.length === 0, JSON.stringify(g));
+  const h = tabla([["LOPEZ DE JESUS MARIA", "F"], ["GARCIA DE LEON ANA", "F"], ["SANCHEZ DE LOS SANTOS ANA", "F"], ["MARTINEZ DE LA ROSA JUAN", "M"], ["PEREZ DE LA LUZ JUAN", "M"],
+    ["LOPEZ DE LOS ANGELES JUAN", "M"], ["DE LEON MARIA", "F"], ["DE LA ROSA JUAN", "M"], ["MARIA DE JESUS PEREZ", "F"], ["JUAN DE LA CRUZ LOPEZ", "M"],
+    ["GARCIA LOPEZ MARIA DE LOS ANGELES", "F"], ["GARCIA MARIA DE LA LUZ", "F"], ["JOSE DE JESUS PEREZ", "M"]]);
+  check("N1h apellidos con partícula (DE LEON, DE LA ROSA, DE LOS SANTOS) se saltan como apellido; tras MARIA/JOSE/JUAN son parte del nombre", h.length === 0, JSON.stringify(h));
+  const ini = tabla([["PEREZ HERNANDEZ M. JOSE", ""], ["GARCIA LOPEZ J. MARIA", ""], ["GARCIA J. MARIA", ""], ["GARCIA LOPEZ J. GUADALUPE MARIA", ""], ["GARCIA J. GUADALUPE", ""],
+    ["J. MARIA LOPEZ", ""], ["M. JOSE LOPEZ", ""], ["PEREZ LOPEZ MARIA JOSE", "F"], ["PEREZ LOPEZ JOSE MARIA", "M"]]);
+  check("N1i inicial tras DOS apellidos (es el primer nombre) o seguida de MARIA/JOSE/ambiguo: vacío; compuestos MARIA JOSE / JOSE MARIA completos siguen", ini.length === 0, JSON.stringify(ini));
+  const amb = tabla([["ALEXIS", ""], ["PEREZ ALEXIS", ""], ["ALEXIS JUAN PEREZ", "M"], ["ALEXIS ANA PEREZ", "F"], ["SALOME", ""], ["LOPEZ SALOME", ""]]);
+  check("N1j ALEXIS y SALOME son ambiguos (se usan para los dos sexos): solos, vacío; decide el otro nombre", amb.length === 0 && sb.REG_NOMBRES_AMBIGUOS.indexOf("ALEXIS") >= 0 && sb.REG_NOMBRES_M.indexOf("ALEXIS") < 0 && sb.REG_NOMBRES_F.indexOf("SALOME") < 0, JSON.stringify(amb));
+  check("N1e el diccionario tiene cientos de nombres y ninguno está a la vez en hombres y mujeres",
+    sb.REG_NOMBRES_M.length >= 200 && sb.REG_NOMBRES_F.length >= 200 && !sb.REG_NOMBRES_M.some((n) => sb.REG_NOMBRES_F.indexOf(n) >= 0 || sb.REG_NOMBRES_AMBIGUOS.indexOf(n) >= 0)
+    && !sb.REG_NOMBRES_F.some((n) => sb.REG_NOMBRES_AMBIGUOS.indexOf(n) >= 0), [sb.REG_NOMBRES_M.length, sb.REG_NOMBRES_F.length].join("|"));
+  check("N1f el motivo del censo: etiqueta por sección, tipo correcto (la sección no vuelve defunción a otra cosa) y pesa como un motivo registrado",
+    sb.regEgresoElegido_({ _egreso_tipo: "alta", _egreso_tipo_por: "Censo (hoja · ALTAS)" }) === "Alta a domicilio (censo: sección ALTAS)"
+    && sb.regEgresoElegido_({ _egreso_tipo: "defuncion", _egreso_tipo_por: "Censo (hoja · DEFUNCIONES)" }) === "Defunción (censo: sección DEFUNCIONES)"
+    && sb.regEgresoElegido_({ _egreso_tipo: "alta", _egreso_tipo_por: "R1 FICTICIO" }) === "Alta a domicilio (registrado en la app)" && sb.regEgresoElegido_({ _egreso_tipo: "inventado", _egreso_tipo_por: "Censo (hoja · ALTAS)" }) === ""
+    && sb.regEgresoTipo("Contrarreferencia (censo: sección DEFUNCIONES)", "") === "Contrarreferencia" && sb.regEgresoTipo("Defunción (censo: sección DEFUNCIONES)", "") === "Defunción"
+    && sb.regEgresoTipo("Alta a domicilio (censo: sección ALTAS)", "") === "Alta" && sb.regEgresoPeso("Alta a domicilio (censo: sección ALTAS)", "") === 4);
+}
+{
+  const d = VACIO();
+  const pt = (id, n, nombre, extra) => Object.assign({ id, cama: "3-9" + n, nombre, exp: "00097" + n, dx: "APENDICITIS AGUDA", edad: "40", ingreso: "2026-11-20", estado: "ESTABLE" }, extra);
+  d.patients = [pt("n1", 1, "MARIA PRUEBA FICTICIA"), pt("n2", 2, "JUAN PRUEBA FICTICIO"), pt("n3", 3, "LUIS PRUEBA FICTICIO"), pt("n4", 4, "FICTICIANO PRUEBA"), pt("n5", 5, "ROSA PRUEBA FICTICIA")];
+  d.notes = [
+    { patient_id: "n1", app: "NIEGA", checklist: { pm_peso: "60" } },                        // sin sexo en tarjeta ni WinLab: del nombre
+    { patient_id: "n2", app: "NIEGA", checklist: { sexo: "F", pm_peso: "60" } },             // la tarjeta contradice al nombre: manda la tarjeta
+    { patient_id: "n3", app: "NIEGA", checklist: { pm_peso: "70" } },                        // WinLab lo trae (F) y contradice al nombre: manda WinLab
+    { patient_id: "n4", app: "NIEGA", checklist: { pm_peso: "70" } },                        // nombre fuera de la lista: vacío
+    { patient_id: "n5", app: "NIEGA", checklist: { pm_peso: "50", pm_talla: "160" } }        // talla: el IMC se sigue calculando
+  ];
+  d.winlab_labs = [{ id: 1, exp: "000973", paciente: "LUIS PRUEBA FICTICIO", fecha: "2026-11-21", scraped_at: "2026-11-21T08:00:00+00:00", data: { reportes: [
+    { __hasLink: false, __cells: ["", "", "000973", "PRUEBA FICTICIO", "LUIS", "FEMENINO", "01/01/1980"] },
+    { __hasLink: true, __target: true, __cells: ["", "", "F973", "21/11/2026 06:00", "21/11/2026 07:00", "CIRUGIA GENERAL"], valores: [{ estudio: "HEMOGLOBINA", valor: "12.0" }] }] } }];
+  const st = { db: d, hoy: "2026-11-25" }; makeSandbox(st).sb.actualizarRegistro();
+  const P = porId(st.ss, "Pacientes"), E = episodiosDe(st.ss);
+  check("N2a Pacientes: sin tarjeta ni WinLab el sexo sale del nombre con «Sexo (fuente)» = «Inferido del nombre»; la tarjeta manda sobre el nombre; nombre desconocido: vacío",
+    P.n1["Sexo"] === "F" && P.n1["Sexo (fuente)"] === "Inferido del nombre" && P.n2["Sexo"] === "F" && P.n2["Sexo (fuente)"] === "Tarjeta" && P.n4["Sexo"] === "" && P.n4["Sexo (fuente)"] === "",
+    JSON.stringify([P.n1["Sexo"], P.n1["Sexo (fuente)"], P.n2["Sexo (fuente)"], P.n4["Sexo"]]));
+  check("N2b Análisis · Episodios: la letra y la fuente (sin nombre); la tarjeta que contradice al nombre manda y se anota en «Calidad de datos»",
+    E("n1")["Sexo"] === "F" && E("n1")["Sexo (fuente)"] === "Inferido del nombre" && !/sin sexo/.test(E("n1")["Calidad de datos"])
+    && E("n2")["Sexo"] === "F" && E("n2")["Sexo (fuente)"] === "Tarjeta" && /el sexo inferido del nombre \(M\) no coincide con el de la tarjeta \(F\): manda la tarjeta/.test(E("n2")["Calidad de datos"])
+    && E("n4")["Sexo"] === "" && /sin sexo registrado/.test(E("n4")["Calidad de datos"]), JSON.stringify([E("n1")["Sexo (fuente)"], E("n2")["Calidad de datos"]]));
+  check("N2c WinLab manda sobre el nombre: Sexo F «de WinLab» y la discrepancia con el nombre (M) se anota",
+    P.n3["Sexo"] === "F" && P.n3["Sexo (fuente)"] === "de WinLab" && E("n3")["Sexo"] === "F" && E("n3")["Sexo (fuente)"] === "de WinLab"
+    && /el sexo inferido del nombre \(M\) no coincide con el de WinLab \(F\): manda WinLab/.test(E("n3")["Calidad de datos"]), JSON.stringify([P.n3["Sexo"], P.n3["Sexo (fuente)"], E("n3")["Calidad de datos"]]));
+  const PC = Object.fromEntries(tab(st.ss, "Por completar").map((x) => [x["ID episodio"], x["Falta"]]));
+  check("N2d «Por completar» ya no pide el sexo inferido del nombre (sí el que falta) ni la talla",
+    !/sexo/.test(PC.n1 || "") && /sexo/.test(PC.n4 || "") && !Object.values(PC).some((f) => /talla/.test(f)), JSON.stringify(PC));
+  const CO = tab(st.ss, "Completitud").filter((x) => x["Mes de ingreso"] === "2026-11"), co = (v) => CO.find((x) => x["Variable"] === v) || {};
+  check("N2e «Completitud»: «Sexo (inferido del nombre)» aparte, sin mezclarse con lo escrito en la tarjeta; «Talla» ya no se mide",
+    co("Sexo (inferido del nombre)")["Con dato (n)"] >= 1 && co("Sexo (escrito en la tarjeta)")["Con dato (n)"] === 1 && co("Sexo (inferido del nombre)")["Con dato (n)"] === 2 && co("Sexo (cualquier fuente)")["Con dato (n)"] === 4
+    && !CO.some((x) => x["Variable"] === "Talla"), JSON.stringify(CO.filter((x) => /Sexo|Talla/.test(x["Variable"]))));
+  const R = tab(st.ss, "Resumen mensual").find((x) => x["Mes"] === "2026-11") || {};
+  check("N2f «Resumen mensual»: «Con sexo (%)» cuenta las tres fuentes (4 de 5) e «Ingresos sin talla (n)» sigue en su columna, vacía; el IMC se sigue calculando con talla",
+    R["Con sexo (%)"] === 80 && R["Ingresos sin talla (n)"] === "" && st.ss.sheets["Resumen mensual"].cells[0].indexOf("Ingresos sin talla (n)") === makeSandbox({ db: VACIO() }).sb.REG_RESUMEN_COLUMNAS.indexOf("Ingresos sin talla (n)")
+    && E("n5")["IMC (kg/m²)"] === 19.5, JSON.stringify([R["Con sexo (%)"], R["Ingresos sin talla (n)"], E("n5")["IMC (kg/m²)"]]));
+  const tA = JSON.stringify(Object.keys(st.ss.sheets).filter((n) => /^Análisis|Completitud|Resumen mensual|Indicadores|Flujo|Eventos/.test(n)).map((n) => st.ss.sheets[n].cells));
+  check("N2g las pestañas de análisis no llevan nombres (ni el de pila del que salió el sexo)", !/FICTICI|MARIA PRUEBA|JUAN PRUEBA/.test(tA), (tA.match(/FICTICI\w*|MARIA PRUEBA|JUAN PRUEBA/) || [])[0]);
+  const vars = makeSandbox({ db: VACIO() }).sb.regVariables_(), txt = JSON.stringify(vars);
+  check("N2h Diccionario de variables: explica «Inferido del nombre» y su error esperado, la talla que ya no se mide y el motivo tomado del censo",
+    /Inferido del nombre/.test(txt) && /Error esperado/.test(txt) && /Ya no se mide \(25 nov 2026\): la talla no se registra en este servicio/.test(txt) && /censo: sección DEFUNCIONES/.test(txt));
+  // Si después la tarjeta trae el sexo, reemplaza al inferido; una fila inferida se vuelve a revisar en cada corrida.
+  d.notes.push({ patient_id: "n1", checklist: { sexo: "M" } });
+  makeSandbox(st).sb.actualizarRegistro();
+  const P2 = porId(st.ss, "Pacientes");
+  check("N2i cuando la tarjeta trae el sexo, reemplaza al inferido del nombre («Tarjeta»)", P2.n1["Sexo"] === "M" && P2.n1["Sexo (fuente)"] === "Tarjeta", JSON.stringify([P2.n1["Sexo"], P2.n1["Sexo (fuente)"]]));
+  // La fila conservada con sexo inferido (salió de la base) no se confunde con lo escrito en la tarjeta.
+  const { sb } = makeSandbox({ db: VACIO() });
+  const out = sb.regCompletarSexoWl([{ "Nombre": "ANA PRUEBA FICTICIA", "Expediente": "000979", "Sexo": "M", "Sexo (fuente)": "Inferido del nombre" }, { "Nombre": "FICTICIANO", "Expediente": "000978", "Sexo": "F", "Sexo (fuente)": "Inferido del nombre" }], { sexosWl: {} });
+  check("N2j regCompletarSexoWl recalcula el sexo inferido (no lo trata como de la tarjeta): se corrige o se quita si ya no es concluyente",
+    out[0]["Sexo"] === "F" && out[0]["Sexo (fuente)"] === "Inferido del nombre" && out[1]["Sexo"] === "" && out[1]["Sexo (fuente)"] === "", JSON.stringify(out.map((r) => [r["Sexo"], r["Sexo (fuente)"]])));
+}
+{
+  // Motivo de egreso tomado del censo (sección ALTAS / DEFUNCIONES de la hoja).
+  const d = VACIO();
+  d.archive = [
+    egresado("k1", "c1", "PRUEBA FICTICIA CENSO UNO", "000961", "2026-11-10", "2026-11-20", {}, { _egreso_tipo: "alta", _egreso_tipo_por: "Censo (hoja · ALTAS)", _egreso_tipo_ts: "2026-11-20T18:00:00Z" }),
+    egresado("k2", "c2", "PRUEBA FICTICIA CENSO DOS", "000962", "2026-11-10", "2026-11-21", {}, { _egreso_tipo: "defuncion", _egreso_tipo_por: "Censo (hoja · DEFUNCIONES)", _egreso_tipo_ts: "2026-11-21T18:00:00Z" }),
+    egresado("k3", "c3", "PRUEBA FICTICIA CENSO TRES", "000963", "2026-11-10", "2026-11-21", {}, { _egreso_tipo: "alta", _egreso_tipo_por: "R1 FICTICIO", _egreso_tipo_ts: "2026-11-21T18:00:00Z" }),
+    // Una copia más nueva solo con la etiqueta de la hoja no tapa el motivo del censo.
+    egresado("k4", "c1", "PRUEBA FICTICIA CENSO UNO", "000961", "2026-11-10", "2026-11-22")
+  ];
+  const st = { db: d, hoy: "2026-11-25" }; makeSandbox(st).sb.actualizarRegistro();
+  const P = porId(st.ss, "Pacientes"), E = episodiosDe(st.ss);
+  check("N3a Pacientes: «… (censo: sección ALTAS)» / «… (censo: sección DEFUNCIONES)»; lo elegido en la app sigue «(registrado en la app)»; una copia técnica más nueva no lo tapa",
+    P.c1["Motivo de egreso"] === "Alta a domicilio (censo: sección ALTAS)" && P.c2["Motivo de egreso"] === "Defunción (censo: sección DEFUNCIONES)" && P.c3["Motivo de egreso"] === "Alta a domicilio (registrado en la app)"
+    && P.c2["Motivo de egreso registrado por"] === "Censo (hoja · DEFUNCIONES)", JSON.stringify([P.c1["Motivo de egreso"], P.c2["Motivo de egreso"], P.c3["Motivo de egreso"]]));
+  check("N3b Episodios: cuenta para la mortalidad como motivo registrado (Defunción 1 / 0) y «Fuente del tipo» dice la sección del censo; lo de la app no",
+    E("c1")["Tipo de egreso"] === "Alta" && E("c1")["Defunción"] === 0 && E("c1")["Fuente del tipo"] === "Censo (hoja): sección ALTAS" && E("c1")["Tipo de egreso (probable)"] === ""
+    && E("c2")["Tipo de egreso"] === "Defunción" && E("c2")["Defunción"] === 1 && E("c2")["Fuente del tipo"] === "Censo (hoja): sección DEFUNCIONES"
+    && E("c3")["Defunción"] === 0 && E("c3")["Fuente del tipo"] === "", JSON.stringify([E("c1")["Fuente del tipo"], E("c2")["Fuente del tipo"], E("c2")["Defunción"], E("c3")["Fuente del tipo"]]));
+  const R = tab(st.ss, "Resumen mensual").find((x) => x["Mes"] === "2026-11") || {};
+  check("N3c Resumen mensual: los tres egresos tienen motivo (100 %) y la defunción del censo cuenta (1 de 3)",
+    R["Egresos con motivo (%)"] === 100 && R["Defunciones (n)"] === 1 && R["Egresos con desenlace conocido (n)"] === 3, JSON.stringify(R));
 }
 
 console.log("RESULT REGISTRO-PACIENTES: " + pass + " passed, " + fail + " failed");

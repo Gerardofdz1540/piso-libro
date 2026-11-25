@@ -1395,7 +1395,7 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   check('T27d corrida completa: el EXT que ya estaba se mueve a «EXT (26-90003)» sin perder su nota; los otros dos se suben; sin archivo, sin DELETE y sin «cama duplicada»',
     patch.length === 1 && patch[0].body.cama === 'EXT (26-90003)'
     && ups.some((r) => r.cama === 'EXT (26-90001)' && r.exp === '26-90001') && ups.some((r) => r.cama === 'EXT (26-900002)')
-    && !env.calls.some((c) => c.m === 'DELETE' || c.u.startsWith('/rest/v1/archive')) && !logs.some((l) => l.motivo === 'cama_duplicada_en_hoja'),
+    && !env.calls.some((c) => c.m === 'DELETE' || (c.m !== 'GET' && c.u.startsWith('/rest/v1/archive'))) && !logs.some((l) => l.motivo === 'cama_duplicada_en_hoja'),   // 25 nov: la fila de ALTAS solo LEE archive (motivo del egreso)
     JSON.stringify({ patch: patch.map((c) => c.body), ups: ups.map((r) => r.cama), logs }));
   // Sale de recuperación a una cama con número: cambio de cama normal (PATCH), no retiro.
   const cur2 = cur.filter((r) => r.id !== 'x3').concat([{ id: 'x1', cama: 'EXT (26-90001)', exp: '26-90001', nombre: 'ANA FICTICIA UNO', updated_by: 'sheet-sync' }]);
@@ -1483,7 +1483,7 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   const porCama = Object.fromEntries(ups.map((r) => [r.cama, r.hoja_azul]));
   check('T28g corrida completa: el GET pide hoja_azul; se suben SOLO las camas cuya marca cambió (3 a true, 1 a false) y nada se archiva ni se borra',
     /[,=]hoja_azul(&|$)/.test(get.u) && ups.length === 4 && porCama['3-101'] === true && porCama['3-103'] === true && porCama['3-104'] === true && porCama['3-102'] === false
-    && !env.calls.some((c) => c.m === 'DELETE' || c.m === 'PATCH' || c.u.startsWith('/rest/v1/archive')), JSON.stringify({ porCama, get: get && get.u }));
+    && !env.calls.some((c) => c.m === 'DELETE' || c.m === 'PATCH' || (c.m !== 'GET' && c.u.startsWith('/rest/v1/archive'))), JSON.stringify({ porCama, get: get && get.u }));   // 25 nov: ALTAS solo LEE archive
   // Segunda corrida con la base ya al día: cero escrituras.
   const base2 = parsed.map(sb.toPatientRow_).map((r, i) => Object.assign({ id: 'h' + i }, r));
   const env2 = makeSandbox({ cur: base2, props: {} });
@@ -1530,6 +1530,274 @@ const missingOld = (ids) => ({ PL_MISSING_SINCE: JSON.stringify(Object.fromEntri
   const sinCol = (m, u) => (m === 'GET' && u.startsWith('/rest/v1/patients?select=id,cama') && /hoja_azul/.test(u) ? { code: 400, body: { message: 'column patients.hoja_azul does not exist' } } : null);
   const d = lee(correr(true, [], { handler: sinCol }));
   check('T28m cama fijada y base sin la columna: no se manda ningún PATCH de hoja_azul', !d.patch.some((x) => 'hoja_azul' in (x.body || {})) && !d.malo, JSON.stringify(d));
+}
+
+// ── 29) Motivo del egreso desde las secciones ALTAS / DEFUNCIONES de la hoja (25 nov 2026) ─────────────────────────
+{
+  const H = ['CAMA', 'EXPEDIENTE', 'NOMBRE', 'EDAD', 'DIAGNÓSTICO', 'ESPECIALIDAD', 'ADSCRITO', 'RESIDENTE', 'INGRESO', 'DÍAS', 'ESTADO'];
+  const pr = (cama, exp, nombre) => [cama, exp, nombre, '50', 'DX FICTICIO', 'CG', 'ADSC FICTICIO', 'RES FICTICIO', '20/11/2026', '5', 'ESTABLE'];
+  const piso = []; for (let i = 0; i < 12; i++) piso.push(pr('3-1' + (60 + i), '26-7' + (1000 + i), 'PACIENTE FICTICIO EGR ' + 'ABCDEFGHIJKL'[i]));
+  // altas/defs: [[exp, nombre], …]
+  const hoja = (altas, defs, extra) => [H, ['PISO']].concat(piso)
+    .concat(altas ? [['ALTAS']].concat(altas.map((a, i) => pr('3-19' + i, a[0], a[1]))) : [])
+    .concat(defs ? [['DEFUNCIONES']].concat(defs.map((a, i) => pr('UCI ' + (i + 1), a[0], a[1]))) : [])
+    .concat(extra === false ? [] : [['PROCEDIMIENTOS'], pr('QX', '26-79901', 'PROCEDIMIENTO FICTICIO UNO'), ['MOVIMIENTOS DE CAMAS'], pr('3-170', '26-79902', 'MOVIMIENTO FICTICIO DOS'),
+      ['INGRESOS'], pr('3-171', '26-79903', 'INGRESO FICTICIO TRES'), ['TPN'], pr('3-172', '26-79904', 'TPN FICTICIO CUATRO')]);
+  const ALTA = ['26-79001', 'GOMEZ FICTICIO ANDRES'], DEF = ['26-79002', 'RUIZ FICTICIA BEATRIZ'];
+  const hace = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const copia = (id, exp, nombre, tipo, min) => ({ id, archived_at: hace(min == null ? 60 : min), tipo: tipo == null ? null : tipo, exp, nombre });
+  const expDe = (u) => { const m = decodeURIComponent(u).match(/patient_data->>exp=eq\.([^&]+)/); return m ? m[1] : null; };
+  const cur0 = () => piso.map((r, i) => ({ id: 'e' + i, cama: r[0], exp: r[1], nombre: r[2], edad: '50', dx: 'DX FICTICIO', esp: 'CG', adscrito: 'ADSC FICTICIO', residente: 'RES FICTICIO',
+    ingreso: '2026-11-20', dias: 5, estado: 'ESTABLE', seccion: 'PISO', es_mio: true, hoja_azul: false, updated_by: 'sheet-sync' }));
+  // st.archive: {exp: [copias]}; st.fallo: 'get' | 'rpc' | 'throw'
+  const correr = (rows, st) => {
+    st.cur = st.cur || cur0(); st.props = st.props || {};
+    st.handler = (m, u) => {
+      if (m === 'GET' && u.startsWith('/rest/v1/archive?')) {
+        if (st.fallo === 'throw') throw new Error('red caída (ficticio)');
+        if (st.fallo === 'get') return { code: 503, body: 'no disponible' };
+        return { code: 200, body: (st.archive || {})[expDe(u)] || [] };
+      }
+      if (m === 'POST' && u === '/rest/v1/rpc/archive_set_egreso') return st.fallo === 'rpc' ? { code: 500, body: 'boom' } : { code: 200, body: '"ok"' };
+      return null;
+    };
+    const env = makeSandbox(st);
+    env.sb.readCensoRows_ = () => rows;
+    let res = null, err = '';
+    try { res = env.sb.doSync(); } catch (e) { err = String(e); }
+    const rpc = env.calls.filter((c) => c.m === 'POST' && c.u === '/rest/v1/rpc/archive_set_egreso').map((c) => c.body);
+    const arcGet = env.calls.filter((c) => c.m === 'GET' && c.u.startsWith('/rest/v1/archive?'));
+    const pac = env.calls.filter((c) => /\/rest\/v1\/(patients|notes)/.test(c.u) && !(c.m === 'GET' && c.u.startsWith('/rest/v1/patients?select=id,cama'))).map((c) => c.m + ' ' + c.u + ' ' + JSON.stringify(c.body));
+    const pend = JSON.parse(st.props.PL_EGRESOS_PEND || '{}'), hechos = JSON.parse(st.props.PL_EGRESOS_HECHOS || '{}');
+    const logEg = env.logs.filter((l) => /^Egresos del censo/.test(l));
+    return { env, res, err, rpc, arcGet, pac, pend, hechos, logEg, st };
+  };
+
+  // 29a parseCenso_: misma salida; las filas de ALTAS/DEFUNCIONES van aparte (no enumerable) y las demás administrativas no.
+  {
+    const { sb } = makeSandbox({});
+    const con = sb.parseCenso_(hoja([ALTA], [DEF])), sin = sb.parseCenso_(hoja(null, null));
+    const eg = con._egresos || [];
+    check('T29a parseCenso_ con ALTAS y DEFUNCIONES: los pacientes devueltos son idénticos a la hoja sin esas secciones; _egresos (no enumerable) trae 1 alta y 1 defunción; PROCEDIMIENTOS/MOVIMIENTOS/INGRESOS/TPN no',
+      JSON.stringify(con) === JSON.stringify(sin) && con.length === 12 && Object.keys(con).length === 12 && !Object.prototype.propertyIsEnumerable.call(con, '_egresos')
+      && eg.length === 2 && eg[0].exp === ALTA[0] && eg[0].tipo === 'alta' && eg[0].nombre === ALTA[1] && eg[1].exp === DEF[0] && eg[1].tipo === 'defuncion',
+      JSON.stringify({ n: con.length, eg }));
+  }
+
+  // 29b dos egresos con copia sin motivo → se aplican con el tipo y p_por correctos; los pacientes sincronizados no cambian.
+  {
+    const st = { archive: { [ALTA[0]]: [copia('a-alta', ALTA[0], ALTA[1])], [DEF[0]]: [copia('a-def', DEF[0], DEF[1])] } };
+    const r = correr(hoja([ALTA], [DEF]), st);
+    const base = correr(hoja(null, null, false), {});
+    const url = r.arcGet.length ? decodeURIComponent(r.arcGet[0].u) : '';
+    check('T29b ALTAS + DEFUNCIONES con copia sin motivo: dos archive_set_egreso con p_tipo/p_por correctos; el GET pide id/tipo/exp/nombre de los últimos 15 días, ordenado',
+      !r.err && r.rpc.length === 2
+      && r.rpc.some((b) => b.p_id === 'a-alta' && b.p_tipo === 'alta' && b.p_por === 'Censo (hoja · ALTAS)')
+      && r.rpc.some((b) => b.p_id === 'a-def' && b.p_tipo === 'defuncion' && b.p_por === 'Censo (hoja · DEFUNCIONES)')
+      && /select=id,archived_at,tipo:note_data->>_egreso_tipo,exp:patient_data->>exp,nombre:patient_data->>nombre/.test(url) && /archived_at=gte\.\d{4}-/.test(url) && /order=archived_at\.desc/.test(url)
+      && !/[>:,]/.test(r.arcGet[0].u.split('?')[1]),   // codificada
+      JSON.stringify({ rpc: r.rpc, url, err: r.err }));
+    check('T29c los pacientes sincronizados (upsert/PATCH/DELETE) son exactamente los mismos que sin las secciones de egresos; doSync devuelve lo mismo',
+      JSON.stringify(r.pac) === JSON.stringify(base.pac) && JSON.stringify(r.res) === JSON.stringify(base.res) && r.res && r.res.capturados === 12,
+      JSON.stringify({ a: r.pac, b: base.pac, ra: r.res, rb: base.res }));
+    check('T29d se recuerdan como resueltos (sin pendientes) y el log solo lleva conteos (ni nombres ni expedientes)',
+      Object.keys(r.pend).length === 0 && r.hechos[ALTA[0]] && r.hechos[ALTA[0]].tipo === 'alta' && r.hechos[DEF[0]].tipo === 'defuncion'
+      && r.logEg.length === 1 && /2 motivos aplicados/.test(r.logEg[0])
+      && !r.env.logs.some((l) => /FICTICI|26-79/.test(l)), JSON.stringify({ hechos: r.hechos, logs: r.env.logs }));
+    // Corrida siguiente (5 min después) con la misma hoja: cero peticiones a archive.
+    const r2 = correr(hoja([ALTA], [DEF]), { archive: st.archive, props: st.props });
+    check('T29e corrida siguiente con la misma hoja: ninguna petición a archive (ya resueltos)', r2.arcGet.length === 0 && r2.rpc.length === 0 && !r2.err, JSON.stringify(r2.arcGet.map((c) => c.u)));
+  }
+
+  // 29f copia con motivo ya elegido por una persona → no se toca; DEFUNCIONES vs «alta» en la copia → solo discrepancia.
+  {
+    const st = { archive: { [ALTA[0]]: [copia('a-alta', ALTA[0], ALTA[1], 'traslado')], [DEF[0]]: [copia('a-def', DEF[0], DEF[1], 'alta')] } };
+    const r = correr(hoja([ALTA], [DEF]), st);
+    check('T29f copia con motivo ya puesto: ningún archive_set_egreso; la defunción contra «alta» cuenta 1 discrepancia; ambos resueltos',
+      !r.err && r.rpc.length === 0 && r.logEg.length === 1 && /1 discrepancias/.test(r.logEg[0]) && /1 ya tenían motivo/.test(r.logEg[0])
+      && Object.keys(r.pend).length === 0 && !!r.hechos[ALTA[0]] && !!r.hechos[DEF[0]], JSON.stringify({ rpc: r.rpc, log: r.logEg }));
+  }
+
+  // 29g mismo expediente, nombre de OTRA persona en la copia → no se aplica (queda pendiente).
+  {
+    const st = { archive: { [ALTA[0]]: [copia('a-otro', ALTA[0], 'PEREZ FICTICIA CAROLINA')], [DEF[0]]: [copia('a-nn', DEF[0], 'DESCONOCIDO')] } };
+    const r = correr(hoja([ALTA], [DEF]), st);
+    check('T29g copia con el mismo expediente pero otro nombre (u otro no identificado): no se aplica nada y siguen pendientes',
+      !r.err && r.arcGet.length === 2 && r.rpc.length === 0 && r.pend[ALTA[0]] && r.pend[DEF[0]] && !r.hechos[ALTA[0]], JSON.stringify({ rpc: r.rpc, pend: r.pend }));
+    // Copia de un episodio VIEJO (archivada 5 días antes de que la hoja lo pusiera en ALTAS): no es este egreso.
+    const r2 = correr(hoja([ALTA], null), { archive: { [ALTA[0]]: [copia('a-viejo', ALTA[0], ALTA[1], null, 5 * 1440)] } });
+    check('T29g2 copia de un episodio anterior (archivada 5 días antes): no se aplica', r2.rpc.length === 0 && !!r2.pend[ALTA[0]], JSON.stringify(r2.rpc));
+  }
+
+  // 29h sin copia todavía → pendiente; en la corrida siguiente aparece la copia y se aplica.
+  {
+    const st = { archive: {} };
+    const r1 = correr(hoja([ALTA], null), st);
+    const p = r1.pend[ALTA[0]] || {};
+    check('T29h sin copia en archive (sigue en la gracia): queda pendiente {tipo, n (huella del nombre, sin el nombre), visto, k=1} y sin archive_set_egreso',
+      !r1.err && r1.rpc.length === 0 && p.tipo === 'alta' && p.n === r1.env.sb.egresoHuella_(ALTA[1]) && /^[0-9a-z]{1,7}$/.test(p.n) && p.k === 1
+      && !/GOMEZ|FICTICIO|ANDRES/.test(st.props.PL_EGRESOS_PEND) && !isNaN(new Date(p.visto).getTime()), JSON.stringify(r1.pend));
+    // 5 min después (el reintento está limitado a uno cada 4 min): ya hay copia.
+    const pend = JSON.parse(st.props.PL_EGRESOS_PEND); pend[ALTA[0]].u = Date.now() - 5 * 60000; st.props.PL_EGRESOS_PEND = JSON.stringify(pend);
+    const r2 = correr(hoja([ALTA], null), { archive: { [ALTA[0]]: [copia('a-nueva', ALTA[0], ALTA[1], null, 1)] }, props: st.props });
+    check('T29i corrida siguiente con la copia ya archivada: se aplica (alta, p_por ALTAS) y sale de pendientes',
+      r2.rpc.length === 1 && r2.rpc[0].p_id === 'a-nueva' && r2.rpc[0].p_tipo === 'alta' && r2.rpc[0].p_por === 'Censo (hoja · ALTAS)' && !r2.pend[ALTA[0]] && !!r2.hechos[ALTA[0]],
+      JSON.stringify({ rpc: r2.rpc, pend: r2.pend }));
+    // Reintento demasiado pronto (onEdit en cada tecla): no repite la petición.
+    const st3 = { archive: {} }; correr(hoja([ALTA], null), st3);
+    const r3 = correr(hoja([ALTA], null), { archive: {}, props: st3.props });
+    check('T29j reintento antes de 4 min (onEdit): no se repite la petición', r3.arcGet.length === 0 && !!r3.pend[ALTA[0]], JSON.stringify(r3.arcGet.length));
+    // El pendiente ya no está en la hoja (al día siguiente la sección ALTAS es otra): ya no se puede comprobar que la
+    // copia sea de esa persona → se descarta sin pedir nada (25 nov 2026, revisión: antes bastaba la 1a palabra).
+    const pend4 = { [ALTA[0]]: { tipo: 'alta', n: r1.env.sb.egresoHuella_(ALTA[1]), visto: hace(60 * 20) } };
+    const r4 = correr(hoja(null, null), { archive: { [ALTA[0]]: [copia('a-dia', ALTA[0], ALTA[1], null, 60 * 19)] }, props: { PL_EGRESOS_PEND: JSON.stringify(pend4) } });
+    check('T29k pendiente que ya salió de la hoja: se descarta sin peticiones ni archive_set_egreso', r4.rpc.length === 0 && r4.arcGet.length === 0 && !r4.pend[ALTA[0]] && /1 descartados/.test(r4.logEg[0] || ''), JSON.stringify({ rpc: r4.rpc, log: r4.logEg }));
+  }
+
+  // 29l a los 10 días el pendiente se descarta (sin peticiones).
+  {
+    const n10 = makeSandbox({}).sb.egresoHuella_('LARA FICTICIA ELENA');
+    const pend = { '26-79009': { tipo: 'defuncion', n: 'FICTICIO', visto: hace(11 * 1440) }, '26-79010': { tipo: 'alta', n: n10, visto: hace(9 * 1440), u: Date.now(), k: 1 } };
+    const r = correr(hoja([['26-79010', 'LARA FICTICIA ELENA']], null), { archive: {}, props: { PL_EGRESOS_PEND: JSON.stringify(pend) } });
+    check('T29l pendiente de 11 días: se descarta sin pedir nada; el de 9 días sigue pendiente',
+      !r.err && r.arcGet.length === 0 && !r.pend['26-79009'] && !!r.pend['26-79010'] && r.hechos['26-79009'] && r.hechos['26-79009'].x === 1 && /1 descartados/.test(r.logEg[0] || ''),
+      JSON.stringify({ pend: r.pend, hechos: r.hechos, log: r.logEg }));
+  }
+
+  // 29m un error HTTP (o una excepción) no rompe la sincronización.
+  {
+    const base = correr(hoja(null, null, false), {});
+    ['get', 'rpc', 'throw'].forEach((f) => {
+      const r = correr(hoja([ALTA], [DEF]), { fallo: f, archive: { [ALTA[0]]: [copia('a-alta', ALTA[0], ALTA[1])], [DEF[0]]: [copia('a-def', DEF[0], DEF[1])] } });
+      check('T29m-' + f + ' falla archive (' + f + '): doSync termina igual, mismos pacientes, el egreso sigue pendiente y el log no lleva datos del paciente',
+        !r.err && r.res && JSON.stringify(r.pac) === JSON.stringify(base.pac) && r.logEg.length === 1 && (f === 'throw' ? /error/.test(r.logEg[0]) : /2 errores/.test(r.logEg[0]))
+        && (f === 'throw' || (!!r.pend[ALTA[0]] && !!r.pend[DEF[0]])) && !r.env.logs.some((l) => /FICTICI|26-79/.test(l)),
+        JSON.stringify({ err: r.err, log: r.logEg, pend: r.pend }));
+    });
+  }
+
+  // 29n el expediente sigue en el censo activo (aún no egresó) → espera sin pedir nada; mismo exp en ALTAS y DEFUNCIONES → duda.
+  {
+    const r = correr(hoja([[piso[0][1], piso[0][2]]], [DEF]), { archive: { [piso[0][1]]: [copia('a-act', piso[0][1], piso[0][2])], [DEF[0]]: [copia('a-def', DEF[0], DEF[1])] } });
+    check('T29n expediente que sigue en el censo activo: no se pide nada para él (queda pendiente); el otro sí se aplica',
+      r.rpc.length === 1 && r.rpc[0].p_id === 'a-def' && !!r.pend[piso[0][1]] && r.arcGet.every((c) => expDe(c.u) !== piso[0][1]), JSON.stringify({ rpc: r.rpc, pend: r.pend }));
+    const r2 = correr(hoja([DEF], [DEF]), { archive: { [DEF[0]]: [copia('a-def', DEF[0], DEF[1])] } });
+    check('T29o mismo expediente en ALTAS y en DEFUNCIONES: duda, no se aplica nada', r2.rpc.length === 0 && r2.arcGet.length === 0 && /1 dudosos/.test(r2.logEg[0] || ''), JSON.stringify(r2.logEg));
+  }
+
+  // 29p tope de peticiones por corrida.
+  {
+    const muchas = []; for (let i = 0; i < 40; i++) muchas.push(['26-795' + (10 + i), 'FICTICIO TOPE ' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN'[i]]);
+    const archive = {}; muchas.forEach((a, i) => { archive[a[0]] = [copia('t' + i, a[0], a[1])]; });
+    const r = correr(hoja(muchas, null), { archive });
+    check('T29p 40 altas: como mucho 30 peticiones a archive en la corrida; el resto queda pendiente',
+      r.arcGet.length + r.rpc.length <= 30 && r.rpc.length === 15 && Object.keys(r.pend).length === 25, JSON.stringify({ g: r.arcGet.length, p: r.rpc.length, pend: Object.keys(r.pend).length }));
+  }
+
+  // ── Revisión del 25 nov 2026 ──
+  const pre = (cama, exp, nombre, estado) => { const f = pr(cama, exp, nombre); f[10] = estado; return f; };
+  // 29q (hallazgo 1) un pendiente cuya fila salió de la hoja ya no se aplica a una copia del mismo exp con otro nombre
+  //     que solo comparte el primer apellido.
+  {
+    const EXP = '26-79601';
+    const conActivo = [H, ['PISO']].concat(piso, [pr('3-180', EXP, 'GARCIA FICTICIA LOPEZ MARIA')], [['ALTAS'], pr('3-190', EXP, 'GARCIA FICTICIA LOPEZ MARIA')]);
+    const st = { archive: {} };
+    const r1 = correr(conActivo, st);
+    check('T29q1 en ALTAS pero aún en el censo activo: queda pendiente sin pedir nada', !!r1.pend[EXP] && r1.arcGet.length === 0, JSON.stringify(r1.pend));
+    const pd = JSON.parse(st.props.PL_EGRESOS_PEND); pd[EXP].visto = hace(4 * 1440); st.props.PL_EGRESOS_PEND = JSON.stringify(pd);
+    const r2 = correr(hoja(null, null), { props: st.props, archive: { [EXP]: [copia('otra', EXP, 'GARCIA FICTICIA PEREZ ROSA', null, 60)] } });
+    check('T29q2 4 días después la fila ya no está en ALTAS y hay una copia del mismo exp de OTRA persona (mismo 1er apellido): nada se aplica, ni se pide; el pendiente se descarta',
+      r2.rpc.length === 0 && r2.arcGet.length === 0 && !r2.pend[EXP], JSON.stringify({ rpc: r2.rpc, pend: r2.pend }));
+    // La huella distingue nombres que comparten la primera palabra; la misma persona escrita igual da la misma huella.
+    const sb = r1.env.sb;
+    check('T29q3 egresoHuella_: distinta para GARCIA … MARIA y GARCIA … ROSA; igual con espacios/acentos distintos',
+      sb.egresoHuella_('GARCIA FICTICIA LOPEZ MARIA') !== sb.egresoHuella_('GARCIA FICTICIA PEREZ ROSA')
+      && sb.egresoHuella_('García  Ficticia López María') === sb.egresoHuella_('GARCIA FICTICIA LOPEZ MARIA') && sb.egresoHuella_('') === '', '');
+  }
+
+  // 29r (hallazgo 2) copia anterior del mismo paciente (retiro en falso de ayer) mientras la del egreso real sigue en la gracia.
+  {
+    const EXP = '26-79602', NOM = 'RAMOS FICTICIA ANA';
+    const vieja = copia('falso-retiro-ayer', EXP, NOM, null, 20 * 60);
+    const cur = cur0().concat([{ id: 'eD', cama: '3-185', exp: EXP, nombre: NOM, edad: '50', dx: 'DX FICTICIO', esp: 'CG', adscrito: 'ADSC FICTICIO', residente: 'RES FICTICIO',
+      ingreso: '2026-11-20', dias: 5, estado: 'ESTABLE', seccion: 'PISO', es_mio: true, hoja_azul: false, updated_by: 'sheet-sync' }]);
+    const st = { cur, archive: { [EXP]: [vieja] } };
+    const r1 = correr(hoja(null, [[EXP, NOM]]), st);
+    check('T29r1 recién pasado a DEFUNCIONES, sigue en el tablero (gracia): no se pide ni se aplica nada a la copia de ayer; queda pendiente',
+      !r1.err && r1.rpc.length === 0 && r1.arcGet.length === 0 && !!r1.pend[EXP] && !r1.hechos[EXP] && !r1.pac.some((x) => /^DELETE/.test(x)), JSON.stringify({ rpc: r1.rpc, pend: r1.pend, pac: r1.pac }));
+    // 13 min después: la gracia terminó, el sync lo archiva y la copia real (más reciente) aparece.
+    const ms = JSON.parse(st.props.PL_MISSING_SINCE || '{}'); ms.eD = Date.now() - 13 * 60000; st.props.PL_MISSING_SINCE = JSON.stringify(ms);
+    const r2 = correr(hoja(null, [[EXP, NOM]]), { cur, props: st.props, archive: { [EXP]: [vieja, copia('real', EXP, NOM, null, 0)] } });
+    check('T29r2 tras la gracia: se aplica a la copia REAL (la más reciente, aunque la respuesta venga en otro orden), no a la de ayer',
+      !r2.err && r2.rpc.length === 1 && r2.rpc[0].p_id === 'real' && r2.rpc[0].p_tipo === 'defuncion' && !!r2.hechos[EXP], JSON.stringify({ rpc: r2.rpc, pac: r2.pac }));
+    // Si la más reciente es de otra persona, no se busca una más vieja del mismo nombre.
+    const r3 = correr(hoja(null, [[EXP, NOM]]), { archive: { [EXP]: [copia('otra', EXP, 'PEREZ FICTICIO LUIS', null, 5), copia('ayer', EXP, NOM, null, 20 * 60)] } });
+    check('T29r3 la copia más reciente es de otra persona: no se aplica a una anterior del mismo nombre', r3.rpc.length === 0 && !!r3.pend[EXP], JSON.stringify(r3.rpc));
+    // Visto activo hace 30 min (p.act): una copia de hace 20 h no puede ser de este egreso aunque sea la más reciente.
+    const sb = r3.env.sb;
+    const pend = { [EXP]: { tipo: 'defuncion', n: sb.egresoHuella_(NOM), visto: hace(40), act: Date.now() - 30 * 60000 } };
+    const r4 = correr(hoja(null, [[EXP, NOM]]), { props: { PL_EGRESOS_PEND: JSON.stringify(pend) }, archive: { [EXP]: [vieja] } });
+    check('T29r4 copia anterior a la última vez que se vio activo: no se aplica', r4.rpc.length === 0 && !!r4.pend[EXP] && r4.arcGet.length === 1, JSON.stringify(r4.rpc));
+    // La copia con motivo puesto por una persona antes de este egreso tampoco cierra el pendiente.
+    const r5 = correr(hoja(null, [[EXP, NOM]]), { cur, archive: { [EXP]: [copia('ayer-con-motivo', EXP, NOM, 'alta', 20 * 60)] } });
+    check('T29r5 en la gracia con una copia anterior que ya tenía motivo: no se da por resuelto', !r5.hechos[EXP] && !!r5.pend[EXP] && r5.arcGet.length === 0, JSON.stringify(r5.hechos));
+  }
+
+  // 29s (hallazgo 3) la columna ESTADO y las secciones que nombran las dos cosas.
+  {
+    const { sb } = makeSandbox({});
+    const casos = [
+      ['ALTAS Y DEFUNCIONES', 'DEFUNCION', 'defuncion'], ['ALTAS Y DEFUNCIONES', 'ALTA', 'alta'], ['ALTAS Y DEFUNCIONES', 'ESTABLE', 'duda'], ['ALTAS Y DEFUNCIONES', '', 'duda'],
+      ['DEFUNCIONES Y ALTAS', 'ALTA', 'alta'], ['DEFUNCIONES Y ALTAS', 'FALLECIÓ', 'defuncion'],
+      ['ALTAS', 'DEFUNCION', 'duda'], ['ALTAS', 'ESTABLE', 'alta'], ['ALTAS', '', 'alta'], ['ALTAS', 'ALTA', 'alta'], ['ALTAS', 'ALTA VOLUNTARIA', 'duda'],
+      ['DEFUNCIONES', 'ALTA', 'duda'], ['DEFUNCIONES', 'FINADO', 'defuncion'], ['DEFUNCIONES', 'GRAVE', 'defuncion'],
+      ['ALTA', '', 'alta'], ['ALTAS DEL DÍA', 'MEJORIA', 'alta'], ['EGRESOS', 'ALTA', 'alta'], ['EGRESOS', 'DEFUNCIÓN', 'defuncion'], ['EGRESOS', '', 'duda'],
+      ['ALTAS VOLUNTARIAS', '', 'duda'], ['PROCEDIMIENTOS', 'DEFUNCION', ''], ['PISO', 'ALTA', '']];
+    const malos = casos.filter((c) => sb.egresoTipoFila_(c[0], c[1]) !== c[2]).map((c) => c.join('|') + ' → ' + sb.egresoTipoFila_(c[0], c[1]));
+    check('T29s1 egresoTipoFila_: sección + ESTADO (las dos de acuerdo; sección mixta o EGRESOS decide el ESTADO; contradicción o sin dato → duda)', malos.length === 0, JSON.stringify(malos));
+    const rows = [H, ['PISO']].concat(piso, [['ALTAS Y DEFUNCIONES'], pre('3-191', '26-79611', 'UNO FICTICIO JUAN', 'DEFUNCION'), pre('3-192', '26-79612', 'DOS FICTICIA ANA', 'ALTA'),
+      ['ALTAS'], pre('3-193', '26-79613', 'TRES FICTICIO LUIS', 'DEFUNCION')]);
+    const eg = sb.parseCenso_(rows)._egresos;
+    check('T29s2 parseCenso_: «ALTAS Y DEFUNCIONES» con ESTADO DEFUNCION → defuncion, con ALTA → alta; ALTAS con ESTADO DEFUNCION → duda',
+      JSON.stringify(eg.map((e) => e.exp + ':' + e.tipo)) === JSON.stringify(['26-79611:defuncion', '26-79612:alta', '26-79613:duda']), JSON.stringify(eg));
+    const archive = { '26-79611': [copia('c1', '26-79611', 'UNO FICTICIO JUAN')], '26-79612': [copia('c2', '26-79612', 'DOS FICTICIA ANA')], '26-79613': [copia('c3', '26-79613', 'TRES FICTICIO LUIS')] };
+    const r = correr(rows, { archive });
+    check('T29s3 doSync: la defunción de la sección mixta se registra como defuncion, el alta como alta y la fila en conflicto no se toca (1 dudoso)',
+      r.rpc.length === 2 && r.rpc.some((b) => b.p_id === 'c1' && b.p_tipo === 'defuncion') && r.rpc.some((b) => b.p_id === 'c2' && b.p_tipo === 'alta')
+      && r.arcGet.every((c) => expDe(c.u) !== '26-79613') && /1 dudosos/.test(r.logEg[0] || ''), JSON.stringify({ rpc: r.rpc, log: r.logEg }));
+  }
+
+  // 29t (hallazgo 6) secciones «ALTA» (singular) y «EGRESOS»: sus pacientes ya no se sincronizan como activos.
+  {
+    const { sb } = makeSandbox({});
+    const base = sb.parseCenso_([H, ['PISO']].concat(piso));
+    const rows = [H, ['PISO']].concat(piso, [['ALTA'], pre('3-194', '26-79621', 'CUATRO FICTICIO PEDRO', ''), ['EGRESOS'], pre('3-195', '26-79622', 'CINCO FICTICIO JOSE', 'ALTA'),
+      ['ALTAS DEL DÍA'], pre('3-196', '26-79623', 'SEIS FICTICIA EVA', '')]);
+    const con = sb.parseCenso_(rows);
+    check('T29t ALTA / EGRESOS / ALTAS DEL DÍA: fuera del censo activo (mismos pacientes que sin ellas) y en _egresos como alta',
+      JSON.stringify(con) === JSON.stringify(base) && JSON.stringify(con._egresos.map((e) => e.exp + ':' + e.tipo)) === JSON.stringify(['26-79621:alta', '26-79622:alta', '26-79623:alta']),
+      JSON.stringify({ activos: con.map((p) => p.exp), eg: con._egresos }));
+  }
+
+  // 29u (hallazgo 4) los pendientes que nunca encuentran copia no frenan a los egresos nuevos; espera creciente.
+  {
+    const { sb } = makeSandbox({});
+    check('T29u1 egresoEsperaMs_: 4, 8, 16 min… hasta 240', [1, 2, 3, 4, 10].map((k) => sb.egresoEsperaMs_(k) / 60000).join(',') === '4,8,16,32,240', '');
+    const viejas = []; for (let i = 0; i < 40; i++) viejas.push(['26-797' + (10 + i), 'AJENO FICTICIO ' + 'ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMN'[i]]);
+    const NUEVA = ['26-79801', 'NUEVO FICTICIO REAL'];
+    const pend = {}; viejas.forEach((v, i) => { pend[v[0]] = { tipo: 'alta', n: sb.egresoHuella_(v[1]), visto: hace(2 * 1440 + i), u: Date.now() - 10 * 60000, k: 1 }; });
+    const r = correr(hoja(viejas, [NUEVA]), { props: { PL_EGRESOS_PEND: JSON.stringify(pend) }, archive: { [NUEVA[0]]: [copia('nueva', NUEVA[0], NUEVA[1], null, 30)] } });
+    check('T29u2 40 pendientes viejos sin copia (todos ya pueden reintentarse) y una defunción nueva: la nueva se consulta primero y se aplica en la misma corrida',
+      r.rpc.length === 1 && r.rpc[0].p_id === 'nueva' && expDe(r.arcGet[0].u) === NUEVA[0] && r.arcGet.length + r.rpc.length <= 30, JSON.stringify({ g: r.arcGet.length, rpc: r.rpc }));
+    // Durante una hora (corridas cada 5 min) los 40 sin copia piden mucho menos que una petición por corrida cada uno.
+    let props = { PL_EGRESOS_PEND: JSON.stringify(pend) }, total = 0;
+    for (let k = 0; k < 12; k++) {
+      const pp = JSON.parse(props.PL_EGRESOS_PEND); Object.values(pp).forEach((v) => { if (v.u) v.u -= 5 * 60000; }); props.PL_EGRESOS_PEND = JSON.stringify(pp);
+      const rk = correr(hoja(viejas, null), { props, archive: {} });
+      total += rk.arcGet.length; props = rk.st.props;
+    }
+    check('T29u3 40 sin copia durante 1 h (12 corridas): ≤ 4 intentos cada uno (antes 29 peticiones por corrida, 348)', total <= 160 && total >= 40, String(total));
+  }
 }
 
 console.log("RESULT CENSO-SYNC: " + pass + " passed, " + fail + " failed");

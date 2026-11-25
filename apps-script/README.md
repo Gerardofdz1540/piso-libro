@@ -28,6 +28,8 @@ El script **solo** escribe columnas censales: `cama, nombre, exp, edad, dx, esp,
 residente, ingreso, dias, estado, seccion, es_mio`. **Jamás** edita la tabla `notes` ni columnas
 clínicas. El UPSERT es `ON CONFLICT (cama) DO UPDATE` de solo esas columnas → el `id` de la fila
 no cambia, así que las notas clínicas siguen ligadas e intactas (verificado contra la BD real).
+Única excepción (25 nov 2026): el motivo del egreso en la copia de `archive`, solo si nadie lo eligió
+(ver «Motivo del egreso desde ALTAS / DEFUNCIONES»).
 
 ## Reconciliación (Supabase refleja la hoja) — sin perder notas
 
@@ -95,6 +97,43 @@ eso está `doSyncForce`:
 
 `doSyncForce` **no** salta la guarda de hoja < 10: eso huele a error de lectura, no a recambio. Cada
 archivo queda en la Papelera de la app y es restaurable.
+
+## Motivo del egreso desde ALTAS / DEFUNCIONES (versión 2026.11.25)
+
+Los egresos se archivan como «RETIRADO DEL CENSO (hoja)» sin decir si fue alta o defunción. La hoja sí lo
+dice: sus secciones **ALTAS** y **DEFUNCIONES** traen la fila completa del paciente. Esas filas siguen sin
+sincronizarse a `patients` (los pacientes del tablero no cambian), pero al final de cada sincronización
+exitosa `aplicarEgresosCenso_` las usa así:
+
+- **Tipo**: lo dan la sección **y** la columna **ESTADO**. «ALTA(S)» → alta, «DEFUNCIONES» → defunción; si el
+  ESTADO dice lo contrario (DEFUNCION/FALLECIÓ en ALTAS, ALTA en DEFUNCIONES) es una **duda** y no se aplica nada.
+  En una sección que nombra las dos cosas («ALTAS Y DEFUNCIONES») o solo «EGRESOS», decide el ESTADO; sin él,
+  duda. Otros tipos (ALTA VOLUNTARIA, TRASLADO, PROBABLES…) también son duda: los elige una persona en la app.
+- Busca la copia **más reciente** del expediente en `archive` (últimos 15 días, no más de 48 h antes de que la
+  hoja lo pusiera en ALTAS/DEFUNCIONES ni antes de la última vez que se le vio en el censo activo o en el
+  tablero) y exige que sea **la misma persona** que la fila (`namesCompatible_`, ambos con nombre real; ante la
+  duda no se aplica). Si la más reciente no cumple, no se busca otra más vieja (sería de otro ingreso o retiro).
+- Mientras el expediente siga en el censo activo **o en el tablero** (gracia de 12 min, guardas), espera: su
+  copia todavía no existe.
+- Si la copia **no tiene motivo**, llama a `archive_set_egreso` (la función que usa la app) con
+  `p_tipo` = `alta` o `defuncion` y `p_por` = `Censo (hoja · ALTAS)` / `Censo (hoja · DEFUNCIONES)`.
+- **Nunca pisa** un motivo elegido por una persona. Si la hoja dice DEFUNCIONES y la copia otra cosa (o al
+  revés), solo suma una *discrepancia* al log. (La comprobación es GET y luego RPC: si alguien elige el motivo en
+  la app justo entre las dos, segundos, el censo lo reemplaza; cerrarlo del todo requiere un parámetro
+  «solo si está vacío» en `archive_set_egreso`, un cambio en la base.)
+- Sin copia todavía: queda **pendiente** en la Script Property `PL_EGRESOS_PEND`
+  (`{exp: {tipo, n, visto, u, k, act}}`, `n` = huella corta del nombre completo, no el nombre) **solo mientras
+  la fila siga en la hoja**: si sale de ALTAS/DEFUNCIONES sin resolverse, se descarta. Se reintenta con espera
+  creciente (4, 8, 16… hasta 240 min) y se **descarta a los 10 días**. Primero van los que menos intentos llevan
+  y los más nuevos, así los que nunca encuentran copia no frenan a los egresos nuevos.
+- Los resueltos se recuerdan en `PL_EGRESOS_HECHOS` mientras sigan en la hoja (+2 días) para no repetir
+  peticiones cada 5 min. Tope de **30 peticiones** por corrida.
+- Un mismo expediente en ALTAS y DEFUNCIONES a la vez es una duda: no se aplica nada.
+- Cualquier error (HTTP o de otro tipo) queda en el log y el sync sigue. El log solo lleva conteos.
+
+Requiere que la `service_role` pueda ejecutar `public.archive_set_egreso` (scripts/supabase_archive_egreso.sql
+la concede a `authenticated`; en Supabase la `service_role` la conserva por los privilegios por defecto). Si la
+llamada falla, el egreso sigue pendiente y el log cuenta los errores.
 
 ## Watchdog de laboratorios
 
@@ -200,7 +239,7 @@ pedirá permisos nuevos (Drive y Documentos) porque el script ahora lee el Doc.
 - **Movimiento de cama que falla** (PATCH rechazado): la cama de origen y la de destino quedan fuera
   del upsert de esa corrida, para que la fila que no se movió no reciba el nombre del siguiente
   ocupante.
-- **Secciones administrativas que ignora por completo:** ALTAS, DEFUNCIONES, PROCEDIMIENTOS,
+- **Secciones administrativas que ignora por completo:** ALTA(S), DEFUNCIONES, EGRESOS, PROCEDIMIENTOS,
   INGRESOS, MOVIMIENTOS DE CAMAS, TPN.
 - **Salas de otros servicios (GINECOLOGÍA, ONCOLOGÍA, HEMATOLOGÍA):** se ignoran *sus* pacientes,
   pero un paciente **nuestro** (especialidad quirúrgica: CG y demás cirugías, NCX, URO…) hospedado

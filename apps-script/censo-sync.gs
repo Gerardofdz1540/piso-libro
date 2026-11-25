@@ -9,6 +9,9 @@
  *   y las dos columnas de control de cama (cama_app_ts, cama_hoja_prev; ver caso (e) en syncPatients_).
  *   NUNCA toca la tabla `notes` ni ninguna otra columna clinica. UPSERT por ON CONFLICT(cama):
  *   actualiza censales y deja intacto el resto de la fila (id estable -> la nota sigue ligada).
+ *   Unica escritura fuera de `patients` (25 nov 2026): el MOTIVO del egreso (alta / defuncion) en la copia de
+ *   `archive` del paciente, tomado de las secciones ALTAS y DEFUNCIONES de la hoja, via archive_set_egreso y solo
+ *   si nadie lo eligio antes (ver aplicarEgresosCenso_).
  *
  * SEGURIDAD: la SERVICE KEY de Supabase vive SOLO en Script Properties (clave SUPABASE_KEY),
  *   nunca en la hoja ni en el repo. El censo (PHI) viaja de este script a Supabase autenticado por
@@ -28,20 +31,25 @@
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones», función
 // pl_reportar_version) y el vigilante la compara con la del repositorio: si no coinciden, falta pegar esta versión.
 // Cambiarla en cada cambio del archivo.
-var CENSO_SYNC_VERSION = '2026.11.12';
+var CENSO_SYNC_VERSION = '2026.11.25';
 var SUPABASE_URL   = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var CENSO_SHEET_ID = '1ChvdR-DZ8K5Bhl0MYmwW7mLbWioNlc-T';
 var CENSO_GID      = 14179734;
 var _censoWriteStats_ = { upserts: 0, unchanged: 0 };
 // false si la base todavía no tiene patients.hoja_azul (ver syncPatients_): se sincroniza igual, sin la marca de ingreso.
 var _hojaAzulCol_ = true;
+// Expedientes que siguen en el tablero (tabla patients) al terminar syncPatients_: {exp: n filas}; null = no se sabe
+// (25 nov 2026). Mientras el paciente siga ahí (gracia de RETIRO_GRACIA_MIN, guardas) su copia del egreso aún no existe
+// y aplicarEgresosCenso_ espera en vez de tomar una copia anterior del mismo expediente.
+var _censoExpTablero_ = null;
 // Google Doc "INDICACIONES HOSPITALIZACION": su texto completo se empuja a Supabase
 // (tabla indicaciones_doc, una sola fila) y la app lo cruza por cama + nombre en cada tarjeta.
 var INDICACIONES_DOC_ID = '1gRCydpjiByBjMxp5edTbuiEwrzHTh8Ir2IvgYqZY73A';
 
 // Secciones ADMINISTRATIVAS (no son pacientes activos del piso): se ignoran por completo.
+// 25 nov 2026: también «ALTA» en singular y «EGRESOS» (antes sus pacientes se sincronizaban como activos).
 var EXCLUDE_ALWAYS_RE = [
-  /^ALTAS/, /^DEFUNCION/, /^PROCEDIMIENTO/, /^INGRESOS/, /MOVIMIENTO/, /^TPN/
+  /^ALTAS?\b/, /^DEFUNCION/, /^EGRESOS?\b/, /^PROCEDIMIENTO/, /^INGRESOS/, /MOVIMIENTO/, /^TPN/
 ];
 // Salas de OTROS servicios: se ignoran SUS pacientes, pero un paciente NUESTRO (quirúrgico)
 // hospedado ahí SÍ se capta — p. ej. una embarazada de cirugía general en cama de gine (oct 2026,
@@ -105,6 +113,7 @@ function doSyncForce() {
 function doSync(opts) {
   _censoWriteStats_ = { upserts: 0, unchanged: 0 };
   _hojaAzulCol_ = true;
+  _censoExpTablero_ = null;
   var key = PropertiesService.getScriptProperties().getProperty('SUPABASE_KEY');
   if (!key) { Logger.log('FALTA Script Property SUPABASE_KEY'); throw new Error('Falta SUPABASE_KEY en Script Properties'); }
 
@@ -132,6 +141,8 @@ function doSync(opts) {
   var retired = syncPatients_(key, dd.rows, opts);
 
   Logger.log('Sync OK: ' + dd.rows.length + ' capturados, ' + _censoWriteStats_.upserts + ' upserts, ' + _censoWriteStats_.unchanged + ' sin cambios, ' + retired + ' retirados, ' + dd.dups + ' camas duplicadas, ' + result.avisos.length + ' avisos de expediente repetido.');
+  // 3) Motivo del egreso desde las secciones ALTAS / DEFUNCIONES de la hoja (25 nov 2026). Nunca rompe el sync.
+  aplicarEgresosCenso_(key, parsed._egresos, parsed);
   reportarVersion_(key, 'censo-sync', CENSO_SYNC_VERSION);
   return { capturados: dd.rows.length, upserts: _censoWriteStats_.upserts, sin_cambios: _censoWriteStats_.unchanged, retired: retired, camas_duplicadas: dd.dups, avisos: result.avisos.length };
 }
@@ -229,6 +240,8 @@ function parseCenso_(rows) {
   if (headerRow < 0) throw new Error('No se encontro la fila de encabezados (CAMA/NOMBRE/EXPEDIENTE).');
 
   var out = [], section = 'PISO';   // primer bloque es PISO (implicito)
+  var egresos = [];                 // filas de ALTAS / DEFUNCIONES (ver egresoTipoSeccion_)
+  Object.defineProperty(out, '_egresos', { value: egresos });   // no enumerable: la lista de pacientes no cambia
   var bg = rows._bg || null;        // colores de fondo (conColores_); sin ellos nadie sale marcado
   for (var i = headerRow + 1; i < rows.length; i++) {
     var row = rows[i];
@@ -245,7 +258,14 @@ function parseCenso_(rows) {
       // Guarda anti-mismap: un expediente real es numerico (ej. "26-13060"). Si "exp" trae
       // un nombre (letras), la fila esta mal mapeada (2a tabla) -> saltarla.
       if (!expLooksValid_(exp)) continue;
-      if (sectionExcludedAlways_(section)) continue;   // ALTAS/DEFUNCIONES/… -> nunca se sincroniza
+      if (sectionExcludedAlways_(section)) {           // ALTAS/DEFUNCIONES/… -> nunca se sincroniza
+        // …pero las filas de ALTAS y DEFUNCIONES dicen el MOTIVO del egreso (25 nov 2026): se juntan aparte
+        // (out._egresos, no enumerable) para aplicarEgresosCenso_. Las demás administrativas no.
+        // El tipo lo dan la sección Y la columna ESTADO (egresoTipoFila_); si se contradicen → 'duda' (no se aplica).
+        var tipoEg = egresoTipoFila_(section, cell_(row, col.estado));
+        if (tipoEg) egresos.push({ exp: exp, nombre: nombre, tipo: tipoEg });
+        continue;
+      }
       // Sala de otro servicio (gine/onco/hemato): solo NUESTROS pacientes quirúrgicos.
       if (sectionOtherWard_(section) && !isSurgicalService_(cell_(row, col.esp))) continue;
       out.push({
@@ -940,6 +960,10 @@ function syncPatients_(key, payload, opts) {
   // nota quedaría bajo otro nombre, o duplicaría al paciente. Mejor una corrida perdida (≤ 5 min) que dato ajeno.
   if (res.getResponseCode() !== 200) throw new Error('syncPatients: GET patients HTTP ' + res.getResponseCode() + '. No se sincronizó: no se puede comprobar la identidad de los pacientes. Revisa SUPABASE_KEY y los permisos del proyecto.');
   var cur = JSON.parse(res.getContentText() || '[]');
+  // Expedientes en el tablero (ver _censoExpTablero_); los retirados con éxito se quitan más abajo.
+  var tablero = {};
+  cur.forEach(function (r) { var e = String(r.exp || '').trim(); if (e) tablero[e] = (tablero[e] || 0) + 1; });
+  _censoExpTablero_ = tablero;
   // Expedientes ambiguos vistos desde Supabase (ver expAmbiguous_) y sus filas, para decidir por nombre.
   var curAmbig = ambiguousExps_(cur), curByExp = {}, ties = {}, appHold = {}, appMove = {};
   cur.forEach(function (r) { var e = String(r.exp || '').trim(); if (e) (curByExp[e] = curByExp[e] || []).push(r); });
@@ -1151,8 +1175,11 @@ function syncPatients_(key, payload, opts) {
   var retired = 0;
   var skipCamas = {};   // camas cuyo ocupante anterior NO pudo archivarse: no tocar esa fila todavía
   toDelete.forEach(function (d) {
-    if (archiveAndDeletePatient_(key, d.row, d.motivo)) retired++;
-    else skipCamas[d.row.cama] = true;
+    if (archiveAndDeletePatient_(key, d.row, d.motivo)) {
+      retired++;
+      var eR = String(d.row.exp || '').trim();
+      if (eR && tablero[eR] && !--tablero[eR]) delete tablero[eR];
+    } else skipCamas[d.row.cama] = true;
   });
   if (toDelete.length) Logger.log('syncPatients: retirados ' + retired + '/' + toDelete.length + ' (reasignación/egreso): ' + toDelete.map(function (d) { return d.row.cama; }).join(', '));
 
@@ -1384,6 +1411,200 @@ function logQuarantine_(key, rows) {
   return fresh.length;
 }
 
+// --- MOTIVO DEL EGRESO DESDE EL CENSO (ALTAS / DEFUNCIONES) --------------------------------------
+// 25 nov 2026. Casi todos los egresos se archivan como «RETIRADO DEL CENSO (hoja)» sin decir si fue alta o defunción,
+// y el registro de pacientes no puede calcular mortalidad. La hoja SÍ lo dice: sus secciones ALTAS y DEFUNCIONES traen
+// la fila completa del paciente (parseCenso_ → out._egresos; el tipo sale de la sección Y de la columna ESTADO, ver
+// egresoTipoFila_). Por cada una se busca la copia del paciente en archive y, si aún no tiene motivo, se registra con
+// archive_set_egreso (la misma función que usa la app) con p_por «Censo (hoja · ALTAS|DEFUNCIONES)».
+//   · La copia es la MÁS RECIENTE del expediente (de los últimos 15 días), archivada no antes de 48 h de que la hoja
+//     lo pusiera ahí ni antes de la última vez que se vio al paciente en el censo activo o en el tablero, y del MISMO
+//     paciente (namesCompatible_ con el nombre de la fila). Si la más reciente no cumple, no se aplica (no se busca
+//     otra más vieja: sería de un ingreso o retiro anterior).
+//   · Mientras el expediente siga en el censo activo o en el tablero (gracia de RETIRO_GRACIA_MIN, guardas), se espera:
+//     su copia todavía no existe.
+//   · Solo mientras la fila siga en ALTAS/DEFUNCIONES: un pendiente cuya fila ya salió de la hoja se descarta sin
+//     pedir nada (no se guarda el nombre, así que ya no se puede comprobar que la copia sea de esa persona).
+//   · NUNCA se pisa un motivo ya elegido por una persona; si la hoja dice DEFUNCIONES y la copia otra cosa (o al
+//     revés), solo se cuenta como discrepancia en el log.
+//   · Sin copia todavía: queda PENDIENTE en Script Properties y se reintenta con espera creciente (4, 8, 16… hasta
+//     EGRESO_REINTENTO_MAX_MIN) hasta EGRESO_PEND_DIAS días; luego se descarta. Primero los que menos intentos llevan
+//     y los más nuevos: los que nunca encuentran copia (pacientes de otro servicio, exp escrito distinto) no frenan
+//     a los egresos nuevos.
+//   · Los ya resueltos se recuerdan mientras sigan en la hoja (+2 días) para no repetir peticiones cada 5 min.
+//   · Tope de EGRESO_MAX_REQ peticiones por corrida. Logs solo con conteos (nada de nombres ni expedientes).
+var EGRESO_PEND_PROP = 'PL_EGRESOS_PEND';     // {"<exp>": {tipo, n (huella del nombre), visto (ISO), u (ms último intento), k (intentos), act (ms última vez activo)}}
+var EGRESO_HECHOS_PROP = 'PL_EGRESOS_HECHOS'; // {"<exp>": {tipo, n, t (YYYY-MM-DD última vez en la hoja), x? (1 = descartado)}}
+var EGRESO_MAX_REQ = 30;
+var EGRESO_PEND_DIAS = 10;
+var EGRESO_VENTANA_DIAS = 15;
+var EGRESO_MARGEN_H = 48;
+var EGRESO_MARGEN_ACT_MIN = 5;                // tolerancia de reloj entre Apps Script y la base
+var EGRESO_REINTENTO_MIN = 4;
+var EGRESO_REINTENTO_MAX_MIN = 240;
+var EGRESO_HECHOS_DIAS = 2;
+var EGRESO_PROP_MAX = 8000;                   // una Script Property admite ~9 KB
+
+function egresoLeerProp_(ps, k) {
+  try { var raw = ps.getProperty(k); var o = raw ? JSON.parse(raw) : {}; return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; }
+  catch (_) { return {}; }
+}
+// Guarda el mapa solo si cambió; si no cabe en una propiedad, quita primero los más viejos (campo de fecha `campo`).
+function egresoGuardarProp_(ps, k, map, antes, campo) {
+  var keys = Object.keys(map).sort(function (a, b) { return String(map[a][campo] || '') < String(map[b][campo] || '') ? -1 : 1; });
+  var txt = JSON.stringify(map);
+  while (txt.length > EGRESO_PROP_MAX && keys.length) { delete map[keys.shift()]; txt = JSON.stringify(map); }
+  if (txt !== antes) ps.setProperty(k, txt);
+}
+// Huella corta del nombre completo normalizado (hash de 32 bits en base 36): reconoce si la fila de un expediente cambió
+// de persona entre corridas sin guardar el nombre en Script Properties.
+function egresoHuella_(nombre) {
+  var t = nameTokens_(nombre).join(' ');
+  if (!t) return '';
+  var h = 5381;
+  for (var i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+// Espera antes del intento k+1 (k = intentos ya hechos): 4, 8, 16… minutos, como mucho EGRESO_REINTENTO_MAX_MIN.
+function egresoEsperaMs_(k) {
+  return Math.min(EGRESO_REINTENTO_MIN * Math.pow(2, Math.max(0, k - 1)), EGRESO_REINTENTO_MAX_MIN) * 60000;
+}
+// ¿La copia de archive es la MISMA persona que la fila de la hoja? Ambos con nombre real (no «DESCONOCIDO»…) y
+// compatibles (namesCompatible_).
+function egresoMismaPersona_(nombreCopia, nombreHoja) {
+  var a = nameWords_(nombreCopia || ''), b = nameWords_(nombreHoja || '');
+  if (!a.length || !b.length || namePlaceholder_(a) || namePlaceholder_(b)) return false;
+  return namesCompatible_({ nombre: nombreCopia }, { nombre: nombreHoja });
+}
+function egresoUrlArchive_(exp, desdeIso) {
+  var q = [['select', 'id,archived_at,tipo:note_data->>_egreso_tipo,exp:patient_data->>exp,nombre:patient_data->>nombre'],
+    ['patient_data->>exp', 'eq.' + exp], ['archived_at', 'gte.' + desdeIso], ['order', 'archived_at.desc']];
+  return SUPABASE_URL + '/rest/v1/archive?' + q.map(function (kv) { return encodeURIComponent(kv[0]) + '=' + encodeURIComponent(kv[1]); }).join('&');
+}
+function egresoFetch_(key, url, opts) {
+  opts = opts || {};
+  var o = { method: opts.method || 'get', headers: { apikey: key, Authorization: 'Bearer ' + key }, muteHttpExceptions: true };
+  if (opts.payload !== undefined) { o.contentType = 'application/json'; o.payload = JSON.stringify(opts.payload); }
+  return UrlFetchApp.fetch(url, o);
+}
+
+/**
+ * Aplica a las copias de archive el motivo de egreso que dice la hoja (ver arriba). egresos: [{exp, nombre, tipo}]
+ * (parseCenso_ → _egresos; tipo 'alta' | 'defuncion' | 'duda'); activos: pacientes del censo activo (si el expediente
+ * sigue ahí, aún no egresó: espera). También espera mientras el expediente siga en el tablero (_censoExpTablero_).
+ * Nunca lanza: todo error queda en el log (solo conteos) y el sync sigue. Devuelve los conteos (o null si falló).
+ */
+function aplicarEgresosCenso_(key, egresos, activos) {
+  var st = { hoja: 0, altas: 0, defunciones: 0, aplicados: 0, ya_tenian: 0, discrepancias: 0, pendientes: 0, descartados: 0, dudosos: 0, errores: 0, peticiones: 0 };
+  try {
+    egresos = egresos || [];
+    var ps = PropertiesService.getScriptProperties();
+    var rawPend = ps.getProperty(EGRESO_PEND_PROP) || '', rawHechos = ps.getProperty(EGRESO_HECHOS_PROP) || '';
+    var pend = egresoLeerProp_(ps, EGRESO_PEND_PROP), hechos = egresoLeerProp_(ps, EGRESO_HECHOS_PROP);
+    var now = Date.now(), hoy = new Date(now).toISOString().slice(0, 10), nowIso = new Date(now).toISOString();
+    var enActivos = {}, tablero = _censoExpTablero_ || {};
+    (activos || []).forEach(function (p) { var e = String(p && p.exp || '').trim(); if (e) enActivos[e] = true; });
+
+    // 1) Filas de la hoja por expediente. El mismo expediente en ALTAS y en DEFUNCIONES (o con dos nombres), o una fila
+    //    cuyo ESTADO contradice a la sección ('duda'), es una duda: no se aplica nada a ese expediente en esta corrida.
+    var hoja = {}, dudosos = {};
+    egresos.forEach(function (e) {
+      var exp = String(e && e.exp || '').trim();
+      if (!exp || !e.tipo) return;
+      if (e.tipo !== 'alta' && e.tipo !== 'defuncion') { dudosos[exp] = true; return; }
+      var prev = hoja[exp];
+      if (prev && (prev.tipo !== e.tipo || !samePerson_(prev.nombre, e.nombre))) { dudosos[exp] = true; return; }
+      if (!prev) hoja[exp] = { tipo: e.tipo, nombre: String(e.nombre || '') };
+    });
+    Object.keys(dudosos).forEach(function (exp) { delete hoja[exp]; });
+    st.dudosos = Object.keys(dudosos).length;
+    Object.keys(hoja).forEach(function (exp) {
+      var h = hoja[exp], n = egresoHuella_(h.nombre);
+      st.hoja++; if (h.tipo === 'alta') st.altas++; else st.defunciones++;
+      var hh = hechos[exp];
+      if (hh && hh.tipo === h.tipo && hh.n === n) { if (hh.t !== hoy) hh.t = hoy; return; }   // ya resuelto: solo se recuerda
+      if (hh) delete hechos[exp];                                                            // cambió el tipo o la persona
+      var pp = pend[exp];
+      if (!pp || pp.tipo !== h.tipo || pp.n !== n) pend[exp] = { tipo: h.tipo, n: n, visto: nowIso };
+    });
+
+    // 2) Pendientes: primero los que menos intentos llevan y, entre ellos, los más nuevos; tope de peticiones.
+    var resolver = function (exp, p, extra) {
+      hechos[exp] = { tipo: p.tipo, n: p.n, t: hoy };
+      if (extra) hechos[exp].x = 1;
+      delete pend[exp];
+    };
+    var orden = Object.keys(pend).sort(function (a, b) {
+      var ka = +pend[a].k || 0, kb = +pend[b].k || 0;
+      if (ka !== kb) return ka - kb;
+      return String(pend[a].visto) > String(pend[b].visto) ? -1 : 1;
+    });
+    for (var i = 0; i < orden.length; i++) {
+      var exp = orden[i], p = pend[exp];
+      if (!p || (p.tipo !== 'alta' && p.tipo !== 'defuncion')) { delete pend[exp]; continue; }
+      var vistoMs = new Date(p.visto).getTime();
+      if (isNaN(vistoMs)) { vistoMs = now; p.visto = nowIso; }
+      if (now - vistoMs > EGRESO_PEND_DIAS * 864e5) { resolver(exp, p, true); st.descartados++; continue; }
+      if (dudosos[exp]) continue;
+      var h = hoja[exp];
+      if (!h) { delete pend[exp]; st.descartados++; continue; }                            // su fila ya salió de la hoja
+      if (enActivos[exp] || tablero[exp]) { p.act = now; continue; }                       // aún no egresa / en la gracia
+      var k = +p.k || 0;
+      if (k && p.u && now - p.u < egresoEsperaMs_(k)) continue;                            // espera creciente entre intentos
+      if (st.peticiones + 2 > EGRESO_MAX_REQ) break;
+      p.u = now; p.k = k + 1;
+      var desde = new Date(now - EGRESO_VENTANA_DIAS * 864e5).toISOString();
+      st.peticiones++;
+      var res = egresoFetch_(key, egresoUrlArchive_(exp, desde));
+      if (res.getResponseCode() !== 200) { st.errores++; continue; }
+      var copias = JSON.parse(res.getContentText() || '[]');
+      // La copia de ESTE egreso es la más reciente del expediente; una anterior es de otro ingreso o retiro.
+      var reciente = null, recMs = -Infinity;
+      for (var j = 0; j < (copias || []).length; j++) {
+        var c = copias[j];
+        if (!c || !c.id || String(c.exp == null ? '' : c.exp).trim() !== exp) continue;
+        var am = new Date(c.archived_at).getTime();
+        if (!isNaN(am) && am > recMs) { reciente = c; recMs = am; }
+      }
+      var minMs = vistoMs - EGRESO_MARGEN_H * 36e5;
+      if (p.act) minMs = Math.max(minMs, p.act - EGRESO_MARGEN_ACT_MIN * 60000);
+      var copia = reciente && recMs >= minMs && egresoMismaPersona_(reciente.nombre, h.nombre) ? reciente : null;
+      if (!copia) continue;                                                                // todavía sin copia: sigue pendiente
+      var tipoCopia = String(copia.tipo == null ? '' : copia.tipo).trim();
+      if (tipoCopia) {                                                                     // ya lo eligió una persona: no se toca
+        if (tipoCopia !== p.tipo && (p.tipo === 'defuncion' || tipoCopia === 'defuncion')) st.discrepancias++;
+        else st.ya_tenian++;
+        resolver(exp, p);
+        continue;
+      }
+      st.peticiones++;
+      var rr = egresoFetch_(key, SUPABASE_URL + '/rest/v1/rpc/archive_set_egreso', {
+        method: 'post',
+        payload: { p_id: copia.id, p_tipo: p.tipo, p_por: p.tipo === 'defuncion' ? 'Censo (hoja · DEFUNCIONES)' : 'Censo (hoja · ALTAS)' }
+      });
+      var rc = rr.getResponseCode();
+      if (rc >= 200 && rc < 300 && !/no-encontrado/.test(rr.getContentText() || '')) { st.aplicados++; resolver(exp, p); }
+      else st.errores++;
+    }
+
+    // 3) Memoria: los resueltos se olvidan EGRESO_HECHOS_DIAS después de salir de la hoja.
+    var limite = new Date(now - EGRESO_HECHOS_DIAS * 864e5).toISOString().slice(0, 10);
+    Object.keys(hechos).forEach(function (exp) { if (!hoja[exp] && String(hechos[exp].t || '') < limite) delete hechos[exp]; });
+    st.pendientes = Object.keys(pend).length;
+    egresoGuardarProp_(ps, EGRESO_PEND_PROP, pend, rawPend, 'visto');
+    egresoGuardarProp_(ps, EGRESO_HECHOS_PROP, hechos, rawHechos, 't');
+    if (st.hoja || st.pendientes || st.peticiones || st.descartados || st.dudosos) {
+      Logger.log('Egresos del censo: ' + st.hoja + ' en la hoja (' + st.altas + ' altas, ' + st.defunciones + ' defunciones), ' + st.aplicados + ' motivos aplicados, '
+        + st.ya_tenian + ' ya tenían motivo, ' + st.discrepancias + ' discrepancias, ' + st.pendientes + ' pendientes, ' + st.descartados + ' descartados, '
+        + st.dudosos + ' dudosos, ' + st.errores + ' errores, ' + st.peticiones + ' peticiones.');
+    }
+    return st;
+  } catch (e) {
+    Logger.log('Egresos del censo: error (' + (e && e.name ? e.name : 'Error') + '); se reintenta en la próxima corrida. Conteos: ' + st.aplicados + ' aplicados, ' + st.peticiones + ' peticiones.');
+    return null;
+  }
+}
+
 // --- WATCHDOG DE LABORATORIOS --------------------------------------------------------------------
 // El scraper de WinLab (GitHub Actions, 3 corridas/día) se quedó 5 semanas apagado en sept-oct 2026
 // (GitHub desactiva los cron tras 60 días sin actividad) y nadie se enteró hasta que faltaron labs.
@@ -1520,6 +1741,39 @@ function sectionExcludedAlways_(section) {
   var s = norm_(section);
   for (var i = 0; i < EXCLUDE_ALWAYS_RE.length; i++) { if (EXCLUDE_ALWAYS_RE[i].test(s)) return true; }
   return false;
+}
+// Sección de EGRESOS del censo (ALTA[S], DEFUNCIONES, EGRESOS) → 'alta' | 'defuncion' | 'ambas' (nombra las dos:
+// «ALTAS Y DEFUNCIONES») | 'egresos' (no dice cuál) | 'duda' (otro tipo: voluntaria, traslado, probables…) | '' si no
+// es sección de egresos. 25 nov 2026.
+var EGRESO_DEF_RE = /DEFUNC|FALLEC|FINAD|OBITO|MURIO|MUERT/;
+var EGRESO_ALTA_RE = /\bALTAS?\b/;
+var EGRESO_OTRO_RE = /VOLUNTARI|TRASLAD|FUGA|CONTRARREF|CAMBIO DE SERV|PROBABLE|PENDIENTE|PREALTA|PRE ALTA|MAXIMO BENEFICIO/;
+function egresoTipoSeccion_(section) {
+  var s = norm_(section);
+  if (!/^ALTAS?\b/.test(s) && !/^DEFUNCION/.test(s) && !/^EGRESOS?\b/.test(s)) return '';
+  if (EGRESO_OTRO_RE.test(s)) return 'duda';
+  var a = EGRESO_ALTA_RE.test(s), d = EGRESO_DEF_RE.test(s);
+  return a && d ? 'ambas' : d ? 'defuncion' : a ? 'alta' : 'egresos';
+}
+// Columna ESTADO de una fila de egresos → 'alta' | 'defuncion' | 'otro' (otro tipo de egreso o dice las dos) | ''
+// (no dice nada del egreso: ESTABLE, GRAVE, vacío…).
+function egresoTipoEstado_(estado) {
+  var s = norm_(estado);
+  if (!s) return '';
+  var a = EGRESO_ALTA_RE.test(s), d = EGRESO_DEF_RE.test(s);
+  if (EGRESO_OTRO_RE.test(s) || (a && d)) return 'otro';
+  return d ? 'defuncion' : a ? 'alta' : '';
+}
+// Tipo de egreso de una fila: la sección y el ESTADO tienen que estar de acuerdo. Sección que nombra las dos cosas
+// (o solo «EGRESOS») → decide el ESTADO; sin él, o si contradice a la sección → 'duda' (aplicarEgresosCenso_ no
+// aplica nada a ese expediente). '' = no es fila de egresos.
+function egresoTipoFila_(section, estado) {
+  var sec = egresoTipoSeccion_(section);
+  if (!sec) return '';
+  var est = egresoTipoEstado_(estado);
+  if (sec === 'duda' || est === 'otro') return 'duda';
+  if (sec === 'ambas' || sec === 'egresos') return est || 'duda';
+  return est && est !== sec ? 'duda' : sec;
 }
 function sectionOtherWard_(section) {
   var s = norm_(section);
