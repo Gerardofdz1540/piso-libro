@@ -41,7 +41,7 @@
  */
 // Versión de este archivo (27 oct 2026): se reporta a Supabase una vez al día (config «versiones») y el vigilante la
 // compara con la del repositorio: si no coinciden, falta pegar esta versión. Cambiarla en cada cambio del archivo.
-var REGISTRO_VERSION = '2026.11.24';
+var REGISTRO_VERSION = '2026.11.26.2';
 var SUPABASE_URL = 'https://vkxplmrzyqlamxpbtmes.supabase.co';
 var REG_HORA = 23;                 // la actualización diaria corre entre las 23:00 y las 24:00 (zona del proyecto)
 var REG_MAX_CELDA = 45000;         // Sheets admite 50 000 caracteres por celda
@@ -71,7 +71,10 @@ var REG_CURSORES = {
   // «no contenido en»): las reescribe la sincronización de la app, llevan usuario y eran 60-87 % de las filas de notes
   // (~0.3 KB cada una, todo sub-rutas nulas). Las de campos nulo sí se leen (no se pierde nada por el filtro).
   audit_pacientes: { tabla: 'audit_log', col: 'ts', tope: 6000, margenMs: REG_MARGEN_AUDIT_MS, filtro: 'tabla=eq.patients&or=(op.in.(INSERT,DELETE),campos.ov.{cama,estado,seccion,esp})' },
-  audit_notas: { tabla: 'audit_log', col: 'ts', tope: 12000, margenMs: REG_MARGEN_AUDIT_MS, filtro: 'tabla=eq.notes&op=eq.UPDATE&or=(campos.is.null,campos.not.cd.{lab_history,imagen_history})' }
+  audit_notas: { tabla: 'audit_log', col: 'ts', tope: 12000, margenMs: REG_MARGEN_AUDIT_MS, filtro: 'tabla=eq.notes&op=eq.UPDATE&or=(campos.is.null,campos.not.cd.{lab_history,imagen_history})' },
+  // 25 nov 2026 (registro 2026.11.26.2): la sección PROCEDIMIENTOS de la hoja del censo (censo-sync.gs la guarda en
+  // censo_procedimientos y le pone visto_ultimo al día cada hora mientras siga en la hoja). Margen de 2 días.
+  censo_procedimientos: { col: 'visto_ultimo', tope: 3000 }
 };
 // Avisos por tiempo (24 nov 2026): sin corrida completa en 36 h; sin leer guardia_cortes en 6 días (la base purga a los 7).
 var REG_SIN_COMPLETA_MS = 36 * 3600000, REG_GUARDIA_AVISO_MS = 6 * 86400000;
@@ -93,11 +96,17 @@ var REG_WL_LABS = 'Labs del robot (WinLab)';
 var REG_ESTADO_DIARIO = 'Estado diario', REG_DISPOSITIVOS = 'Dispositivos', REG_DRENAJES_DIARIO = 'Drenajes · diario';
 var REG_MOVIMIENTOS = 'Movimientos y estado', REG_SOPORTE = 'Soporte y exposiciones (historial)', REG_ACTIVIDAD = 'Actividad por episodio y día';
 var REG_NO_VALIDO = 'valor no válido';
+// 25 nov 2026 (registro 2026.11.26.2): seguimiento de operados. «Procedimientos del censo» es cruda (con nombres, junto a
+// las demás crudas); «Seguimiento de operados» es lista de trabajo con nombres, como «Por completar».
+var REG_PROC_CENSO = 'Procedimientos del censo', REG_SEGUIMIENTO = 'Seguimiento de operados';
 var REG_GUARDIA_CORTES = 'Guardia · renglones retirados', REG_RIS = 'Imagen del robot (RIS)', REG_NOTA_JSON = 'Nota completa (JSON)', REG_NOTA_JSON_2 = 'Nota completa (JSON) · 2';
 // Celdas que pasaron de REG_MAX_CELDA y se recortaron en esta corrida (24 nov 2026): antes se cortaban sin avisar.
 var REG_RECORTE = ' …[recortado]', REG_CORRIDA = { recortes: 0 };
 // Sexo: el de la tarjeta; si no lo tiene, el del encabezado de WinLab del paciente (29 oct 2026), con esta marca.
 var REG_SEXO_TARJETA = 'Tarjeta', REG_SEXO_WL = 'de WinLab';
+// 25 nov 2026: tercera fuente, la de menor prioridad: el sexo inferido del nombre de pila (regSexoDeNombre), solo si ni la
+// tarjeta ni WinLab lo traen. Si alguna de las dos lo trae y no coincide con el nombre, mandan ellas.
+var REG_SEXO_NOMBRE = 'Inferido del nombre';
 // WinLab se vuelve a leer completo UNA vez cuando cambia esta marca (29 oct 2026: para tomar el sexo de los encabezados).
 var REG_WL_RELECTURA = 'sexo-2026-10-29';
 
@@ -129,6 +138,13 @@ var REG_PESTANAS = [
   { nombre: 'Notas de evolución', modo: 'acumula', clave: ['ID episodio', 'Fecha y hora'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Fecha y hora', 'Autor', 'Con IA', 'Texto'] },
   { nombre: 'Guardia y cronología', modo: 'vigente', clave: ['ID episodio', 'Caja', 'Renglón'], columnas: ['ID episodio', 'Expediente', 'Nombre', 'Caja', 'Orden', 'Renglón', 'Vigente'] },
   { nombre: 'Procedimientos programados', modo: 'acumula', fuente: 'procedimientos_dia', clave: ['ID'], columnas: ['ID', 'Fecha', 'Cama', 'Expediente', 'Nombre', 'Edad', 'Diagnóstico', 'Especialidad', 'Adscrito', 'Residente', 'Agregado por'] },
+  // 25 nov 2026 (registro 2026.11.26.2): la sección PROCEDIMIENTOS de la hoja del censo (tabla censo_procedimientos), una
+  // fila por fecha + expediente + nombre. «ID episodio», «Ambulatorio» y «Grupo» se recalculan en cada corrida contra
+  // «Pacientes» (regCompletarProcCenso_): un episodio que aparece después también se liga. Solo hay datos desde el 25 nov
+  // 2026 (Google no guarda los censos viejos).
+  { nombre: REG_PROC_CENSO, modo: 'acumula', fuente: 'censo_procedimientos', clave: ['ID'], completar: regCompletarProcCenso_,
+    columnas: ['ID', 'Fecha', 'Cama', 'Expediente', 'Nombre', 'Edad', 'Diagnóstico', 'Especialidad', 'Adscrito', 'Residente', 'Visto primero', 'Visto por última vez',
+      'ID episodio', 'Ambulatorio', 'Grupo', 'Vigente'] },
   // 24 nov 2026: foto nocturna del tratamiento de cada HOSPITALIZADO (una fila por episodio y día; solo hacia adelante: la
   // tarjeta no guarda el historial). Va antes de las pestañas de los robots: la foto de hoy no se puede volver a tomar.
   { nombre: REG_ESTADO_DIARIO, modo: 'acumula', clave: ['ID episodio', 'Fecha'], columnas: ['ID episodio', 'Fecha', 'Cama', 'Sección', 'Estado clínico', 'ATB (casilla)', 'Antibiótico (texto)',
@@ -289,6 +305,11 @@ function actualizarRegistro() {
     datos.restauraciones = leer('archive', 'id,de:patient_data->>_supa_id,a:note_data->>_restaurado_a', 'id', 'note_data->>_restaurado_a=not.is.null', 1000);
     datos.cronologias = leer('cronologia_respaldo', 'patient_id,exp,nombre,cronologia,actualizado', 'patient_id', '', 200);
     datos.procedimientos = opcional('procedimientos_dia', function () { return leer('procedimientos_dia', 'id,cama,exp,nombre,edad,dx,esp,adscrito,residente,fecha_dia,added_by', 'id', '', 500); });
+    // 25 nov 2026 (registro 2026.11.26.2): procedimientos del censo (sección PROCEDIMIENTOS de la hoja), por cursor
+    // (visto_ultimo, id) con 2 días de margen. Si falla, solo su pestaña se queda sin tocar.
+    datos.censoProcs = opcional('censo_procedimientos', function () {
+      return leerCursor('censo_procedimientos', 'id,fecha,cama,exp,nombre,edad,dx,esp,adscrito,residente,visto_primero,visto_ultimo', 1000);
+    });
     // WinLab: cada fila trae TODOS los reportes de la búsqueda (también de homónimos) y se repite cada día; se procesa
     // página por página (sin guardar el JSON crudo) y queda un renglón por reporte del paciente. La edad y el alias del
     // censo y de la Papelera sirven para aplicar la regla del robot a las capturas que no traen su marca (__target).
@@ -320,6 +341,9 @@ function actualizarRegistro() {
     // Si su encabezado está dañado, aquí no se detiene nada: la pestaña falla en su turno, como siempre.
     try { if (hojaWl) previos[REG_WL_LABS] = regLeerPestana_(hojaWl, cfgWl); } catch (e) { delete previos[REG_WL_LABS]; }
     var ctx = { sexosWl: regWlSexosMapa((previos[REG_WL_LABS] ? previos[REG_WL_LABS].filas : []).concat(nuevo[REG_WL_LABS] || [])) };
+    // 25 nov 2026: las pestañas que se completan contra otras ya escritas en esta corrida («Procedimientos del censo» contra
+    // «Pacientes», que va primero) las leen de aquí.
+    ctx.fusionadas = fusionadas; ctx.hoy = hoy;
     // Dentro de una pestaña, ningún setValues empieza después de 5 min 40 s (escribir a medias es seguro: cada fila va a
     // su renglón por clave y la siguiente vuelta completa lo que falte).
     var corte = function () { return transcurrido() > REG_LIMITE_MS + 25000; };
@@ -1230,21 +1254,86 @@ function regWlSexoPaciente(mapa, exp, nombre) {
   var s = Object.keys(vistos);
   return s.length === 1 ? s[0] : (s.length > 1 ? '?' : '');
 }
-/** Pacientes: «Sexo (fuente)» = Tarjeta si la tarjeta trae el sexo; si no, el de WinLab marcado «de WinLab». Un sexo que
- *  ya se tomó de WinLab se vuelve a revisar (si WinLab ahora trae los dos, se quita); lo que escribió la app no se toca. */
+/** Pacientes: «Sexo (fuente)» = Tarjeta si la tarjeta trae el sexo; si no, el de WinLab marcado «de WinLab»; si tampoco,
+ *  el inferido del nombre de pila marcado «Inferido del nombre» (25 nov 2026). Un sexo que ya se tomó de WinLab o del
+ *  nombre se vuelve a revisar (si WinLab ahora trae los dos, se quita); lo que escribió la app no se toca. */
 function regCompletarSexoWl(filas, ctx) {
   var mapa = regObj(ctx && ctx.sexosWl);
   return regArr(filas).map(function (r) {
-    var deWl = regTexto(r['Sexo (fuente)']).trim() === REG_SEXO_WL, sexo = regTexto(r['Sexo']), fuente;
-    if (!deWl && sexo.trim()) fuente = REG_SEXO_TARJETA;
+    var f0 = regTexto(r['Sexo (fuente)']).trim(), deWl = f0 === REG_SEXO_WL, deNombre = f0 === REG_SEXO_NOMBRE, sexo = regTexto(r['Sexo']), fuente;
+    if (!deWl && !deNombre && sexo.trim()) fuente = REG_SEXO_TARJETA;
     else {
       var w = regWlSexoPaciente(mapa, r['Expediente'], r['Nombre']);
       if (w === 'F' || w === 'M') { sexo = w; fuente = REG_SEXO_WL; }
-      else if (w === '?' || !deWl) { sexo = ''; fuente = ''; }
-      else fuente = REG_SEXO_WL;   // tomado de WinLab en otra corrida y hoy sin renglones que lo contradigan: se conserva
+      else if (deWl && w !== '?') fuente = REG_SEXO_WL;   // tomado de WinLab en otra corrida y hoy sin renglones que lo contradigan: se conserva
+      else {
+        sexo = regSexoDeNombre(r['Nombre']); fuente = sexo ? REG_SEXO_NOMBRE : '';
+      }
     }
     if (regTexto(r['Sexo']) === sexo && regTexto(r['Sexo (fuente)']) === fuente) return r;
     var c = Object.assign({}, r); c['Sexo'] = sexo; c['Sexo (fuente)'] = fuente; return c;
+  });
+}
+
+// ─── Procedimientos del censo (25 nov 2026, registro 2026.11.26.2) ───────────────────────────────────────────────
+/** Filas de «Pacientes» por expediente válido (regExpValido). */
+function regPacientesPorExp_(pacientes) {
+  var m = {};
+  regArr(pacientes).forEach(function (r) { var e = regExpValido(r && r['Expediente']); if (e) (m[e] = m[e] || []).push(r); });
+  return m;
+}
+/** Episodio («ID episodio» de Pacientes) de un procedimiento del censo: mismo expediente válido, nombre compatible
+ *  (regMismaPersona, la regla de identidad del registro) y estancia que cubre la fecha: desde la fecha de ingreso (o el
+ *  día en que se dio de alta en la app) hasta el egreso; si sigue hospitalizado, hasta hoy; si salió de la base sin egreso,
+ *  hasta la última vez que se vio. Sin las tarjetas duplicadas. Si varios cubren la fecha, el de ingreso más reciente.
+ *  25 nov 2026 (revisión): con `cama` que no es EXT (QX, UCIP, una cama de piso) y sin episodio que cubra la fecha, vale
+ *  el que ingresó AL DÍA SIGUIENTE (cirugía de urgencias la víspera del ingreso al servicio). Sin cama: solo la estancia.
+ *  '' si no hay. */
+function regEpisodioDeProc_(porExp, exp, nombre, fecha, hoy, cama) {
+  var e = regExpValido(exp), f = regFecha(fecha), mejor = null, mejorIni = '', manana = null;
+  if (!e || !f) return '';
+  var c = regNorm_(cama).trim(), vispera = !!c && !/^EXT\b/.test(c) ? regFechaMas_(f, 1) : '';
+  regArr(porExp[e]).forEach(function (p) {
+    if (!regMismaPersona(p['Nombre'], nombre)) return;
+    var estado = regTexto(p['Estado en registro']);
+    if (estado === 'Egresado' && /^Duplicado/.test(regEgresoTipo(p['Motivo de egreso'], p['Estado clínico']))) return;
+    var ini = regFecha(p['Fecha de ingreso']) || regFechaLocal(p['Alta en la app']);
+    var fin = estado === 'Egresado' ? regFecha(p['Fecha de egreso']) : (estado === 'Hospitalizado' ? (hoy || '') : regFecha(p['Última vez en la base']));
+    if (ini && vispera && ini === vispera && !manana) manana = p;
+    if (!ini || ini > f || (fin && fin < f)) return;
+    if (!mejor || ini > mejorIni) { mejor = p; mejorIni = ini; }
+  });
+  if (!mejor) mejor = manana;
+  return mejor ? regTexto(mejor['ID episodio']).trim() : '';
+}
+/** «Procedimientos del censo»: ID episodio, Ambulatorio (Sí si la cama es EXT o no hay episodio) y Grupo (regCxGrupo del
+ *  diagnóstico) de TODAS las filas, contra «Pacientes» de esta corrida. Sin «Pacientes» (no se pudo escribir) no cambia nada.
+ *  25 nov 2026 (revisión):
+ *   · Vigente: el script del censo reescribe juntas (mismo «Visto por última vez») todas las filas que siguen en la hoja
+ *     ese día; la tabla no borra. Una fila cuya última vez es anterior (más de REG_PROC_CENSO_TOLERANCIA_MS) a la más
+ *     reciente de su misma fecha salió de la hoja ese día (se corrigió el nombre o el expediente, o se canceló): «No».
+ *   · Ambulatorio vacío (no se sabe) si el expediente no es válido para el registro (regExpValido) y la cama no es EXT. */
+var REG_PROC_CENSO_TOLERANCIA_MS = 60000;
+function regMsVisto_(v) {
+  var t = Date.parse(regTexto(v).trim().replace(/(\.\d{3})\d+/, '$1'));
+  return isFinite(t) ? t : null;
+}
+function regCompletarProcCenso_(filas, ctx) {
+  var pac = ctx && ctx.fusionadas && ctx.fusionadas['Pacientes'];
+  if (!pac) return filas;
+  var porExp = regPacientesPorExp_(pac), hoy = ctx.hoy || '', maxVisto = {};
+  regArr(filas).forEach(function (r) {
+    var f = regFecha(r && r['Fecha']), t = regMsVisto_(r && r['Visto por última vez']);
+    if (f && t !== null && !(maxVisto[f] >= t)) maxVisto[f] = t;
+  });
+  return regArr(filas).map(function (r) {
+    var ep = regEpisodioDeProc_(porExp, r['Expediente'], r['Nombre'], r['Fecha'], hoy, r['Cama']);
+    var ext = /^EXT\b/.test(regNorm_(r['Cama']).trim());
+    var amb = ext ? 'Sí' : !regExpValido(r['Expediente']) ? '' : ep ? 'No' : 'Sí', grupo = regCxGrupo(r['Diagnóstico']);
+    var f = regFecha(r['Fecha']), t = regMsVisto_(r['Visto por última vez']);
+    var vig = f && t !== null && maxVisto[f] - t > REG_PROC_CENSO_TOLERANCIA_MS ? 'No' : 'Sí';
+    if (regTexto(r['ID episodio']) === ep && regTexto(r['Ambulatorio']) === amb && regTexto(r['Grupo']) === grupo && regTexto(r['Vigente']) === vig) return r;
+    var c = Object.assign({}, r); c['ID episodio'] = ep; c['Ambulatorio'] = amb; c['Grupo'] = grupo; c['Vigente'] = vig; return c;
   });
 }
 
@@ -1266,7 +1355,7 @@ function regUnirRescates(rescates, episodios, orden, agregar) {
     }
     // 24 nov 2026: el motivo que una persona eligió en la Papelera sobre ESTA copia (sin id) sí llega a su episodio: antes
     // solo se unía la nota y el motivo elegido se perdía. No tapa otro motivo ya registrado por una persona (peso 4).
-    var nd0 = regObj(r.a.note_data), elegido = REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] ? REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] + ' (registrado en la app)' : '';
+    var nd0 = regObj(r.a.note_data), elegido = regEgresoElegido_(nd0);
     var ponerElegido = function (ep) {
       if (!elegido || ep.estado !== 'Egresado' || regEgresoPeso(ep.motivo, ep.p.estado) >= 4) return;
       ep.motivo = elegido; ep.tipoPor = regTexto(nd0._egreso_tipo_por); ep.tipoTs = regTexto(nd0._egreso_tipo_ts);
@@ -1562,7 +1651,7 @@ function regConstruir(datos, hoy) {
       if (!regTexto(pd._supa_id || pd.id).trim() && REG_RESCATE.test(regTexto(nd0._egreso))) { rescates.push({ a: a, pd: pd, nd: nd }); return; }
       var id = regTexto(pd._supa_id || pd.id || ('archivo-' + a.id));
       var elegido = !!REG_EGRESO_APP[regTexto(nd0._egreso_tipo)];
-      var motivo = elegido ? REG_EGRESO_APP[regTexto(nd0._egreso_tipo)] + ' (registrado en la app)'
+      var motivo = elegido ? regEgresoElegido_(nd0)
         : regTexto(nd0._egreso || (/^(ALTA|DEFUNCI[OÓ]N)$/i.test(regTexto(pd.estado)) ? pd.estado : '') || 'EGRESO');
       var egreso = regFecha(nd0._egresoFecha) || regFechaLocal(a.archived_at);
       var previo = episodios[id];
@@ -1771,6 +1860,14 @@ function regConstruir(datos, hoy) {
     if (!x || !x.id) return;
     fila('Procedimientos programados', { 'ID': regTexto(x.id), 'Fecha': regFecha(x.fecha_dia), 'Cama': regTexto(x.cama), 'Expediente': regTexto(x.exp), 'Nombre': regTexto(x.nombre), 'Edad': regTexto(x.edad), 'Diagnóstico': regTexto(x.dx), 'Especialidad': regTexto(x.esp), 'Adscrito': regTexto(x.adscrito), 'Residente': regTexto(x.residente), 'Agregado por': regTexto(x.added_by) });
   });
+  // 25 nov 2026 (registro 2026.11.26.2): procedimientos del censo. ID episodio / Ambulatorio se completan al escribir
+  // (regCompletarProcCenso_, contra todo «Pacientes»).
+  regArr(datos.censoProcs).forEach(function (x) {
+    if (!x || x.id === undefined || x.id === null) return;
+    fila(REG_PROC_CENSO, { 'ID': regTexto(x.id), 'Fecha': regFecha(x.fecha), 'Cama': regTexto(x.cama), 'Expediente': regTexto(x.exp), 'Nombre': regTexto(x.nombre), 'Edad': regTexto(x.edad),
+      'Diagnóstico': regTexto(x.dx), 'Especialidad': regTexto(x.esp), 'Adscrito': regTexto(x.adscrito), 'Residente': regTexto(x.residente),
+      'Visto primero': regTexto(x.visto_primero), 'Visto por última vez': regTexto(x.visto_ultimo), 'ID episodio': '', 'Ambulatorio': '', 'Grupo': regCxGrupo(x.dx), 'Vigente': 'Sí' });
+  });
   // WinLab: ya acumulado por regWlAcumular (un renglón por reporte del paciente y uno por muestra de cultivo).
   var wl = datos.winlab || {};
   Object.keys(regObj(wl.labs)).forEach(function (k) { fila(REG_WL_LABS, wl.labs[k]); });
@@ -1867,7 +1964,21 @@ var REG_RESUMEN_COLUMNAS = ['Mes', 'Ingresos (n)', 'Egresos (n)', 'Egresos con d
   'Complicación mayor (Clavien ≥ IIIa) (n)', 'Reintervenciones (n)', 'Reingresos a 30 días (n)', 'Reingreso a 30 días (%)', 'Cultivos positivos (n)',
   'Dx principales (más frecuentes)', 'Cirugías por grupo (más frecuentes)', 'Gérmenes (más frecuentes)', 'Ingresos con datos incompletos (n)', 'Vigente',
   // 24 nov 2026 (al final).
-  'Cirugías sin fecha exacta (n)', 'Reintervenciones no planeadas (n)', 'Ingresos sin talla (n)', 'Egresos con motivo (%)', 'Con sexo (%)', 'Episodios sin labs (n)'];
+  'Cirugías sin fecha exacta (n)', 'Reintervenciones no planeadas (n)', 'Ingresos sin talla (n)', 'Egresos con motivo (%)', 'Con sexo (%)', 'Episodios sin labs (n)',
+  // 25 nov 2026 (registro 2026.11.26.2, al final): la sección PROCEDIMIENTOS del censo, por mes de la fecha.
+  'Procedimientos en el censo (n)', 'Procedimientos en el censo de CG (n)', 'Ambulatorios (n)'];
+// Desde cuándo hay procedimientos del censo (25 nov 2026): Google no guarda los censos viejos. Antes de ese mes las
+// columnas del Resumen mensual van vacías (no hay dato), no en 0.
+var REG_PROC_CENSO_DESDE = '2026-11-25';
+// «Seguimiento de operados» (25 nov 2026): una fila por persona (expediente + nombre compatible). CON NOMBRES.
+var REG_SEGUIMIENTO_COLUMNAS = ['Expediente', 'Nombre', 'Edad', 'Sexo', 'Sexo (fuente)', 'Primer procedimiento', 'Último procedimiento', 'Procedimientos en el censo (n)',
+  'Cirugías registradas (n)', 'Especialidades', 'Diagnóstico más reciente', 'ID episodios', '¿Hospitalizado ahora?', 'Último egreso', 'Motivo del último egreso',
+  'Días desde el último procedimiento', 'Reingresos posteriores (n)', 'Vigente',
+  // 25 nov 2026 (revisión, al final): «Nombre» es estable (el primero que se vio, sin acentos); aquí el más reciente.
+  'Nombre más reciente'];
+// «Días desde el último procedimiento» solo durante el seguimiento a 30 días: después queda vacío y la fila deja de
+// cambiar cada noche (antes se reescribían todas las filas, una lista que crece sin tope). 25 nov 2026 (revisión).
+var REG_SEGUIMIENTO_DIAS_MAX = 30;
 var REG_CLAVE = { nombre: 'Clave de seudónimos', modo: 'acumula', clave: ['ID episodio'],
   columnas: ['ID episodio', 'Expediente', 'Nombre', 'ID paciente (análisis)', 'ID episodio (análisis)', 'Identidad del paciente por'] };
 
@@ -2245,7 +2356,12 @@ var REG_ANALISIS = [
   { nombre: REG_AN_COMPLETITUD, modo: 'derivada', clave: ['Mes de ingreso', 'Variable'], columnas: REG_COMPLETITUD_COLUMNAS, formatos: regFormatos_(['Con dato (n)', 'Aplicables (n)'], ['Completitud (%)']) },
   { nombre: REG_AN_FLUJO, modo: 'derivada', clave: ['Paso'], columnas: REG_FLUJO_COLUMNAS, formatos: regFormatos_(['Orden', 'Episodios (n)'], []) },
   { nombre: REG_AN_INDICADORES, modo: 'derivada', clave: ['Periodo', 'Indicador', 'Estrato'], columnas: REG_INDICADORES_COLUMNAS,
-    formatos: regFormatos_(['Numerador', 'Denominador', 'Excluidos por dato faltante (n)'], ['Tasa (%)', 'IC95 inferior', 'IC95 superior', 'Valor']) }
+    formatos: regFormatos_(['Numerador', 'Denominador', 'Excluidos por dato faltante (n)'], ['Tasa (%)', 'IC95 inferior', 'IC95 superior', 'Valor']) },
+  // 25 nov 2026 (registro 2026.11.26.2): seguimiento de operados. CON NOMBRES (lista de trabajo, como «Por completar»):
+  // una fila por persona que aparece en «Procedimientos del censo» o tiene cirugías en el registro. Va al final: las
+  // pestañas que ya existían se escriben primero si se acaba el tiempo.
+  { nombre: REG_SEGUIMIENTO, modo: 'derivada', clave: ['Expediente', 'Nombre'], columnas: REG_SEGUIMIENTO_COLUMNAS,
+    formatos: regFormatos_(['Procedimientos en el censo (n)', 'Cirugías registradas (n)', 'Días desde el último procedimiento', 'Reingresos posteriores (n)'], []) }
 ];
 
 /** Número de un texto: '7.4', '7,4', '<0.05', '+500', '1,200' (con miles: true), con una unidad permitida al final.
@@ -2291,6 +2407,126 @@ function regSexo(v) {
   if (['M', 'MASC', 'MASCULINO', 'H', 'HOMBRE', 'VARON'].indexOf(s) >= 0) return 'M';
   if (['F', 'FEM', 'FEMENINO', 'MUJER'].indexOf(s) >= 0) return 'F';
   return '';
+}
+// ─── Sexo inferido del nombre de pila (25 nov 2026) ─────────────────────────────────────────────────────────────────
+// Pedido del dueño: «el sexo se puede inferir con el nombre». Es la TERCERA fuente, la de menor prioridad: solo cuando ni
+// la tarjeta ni WinLab lo traen. Diccionario de nombres de pila frecuentes en México; NUNCA se adivina por la terminación
+// (un nombre que no está en la lista da vacío). Error esperado: bajo en los que se clasifican (ante la duda, vacío); los ambiguos
+// (GUADALUPE, ROSARIO…) solo se resuelven con el otro nombre de pila.
+var REG_NOMBRES_M = ('AARON ABDIEL ABEL ABELARDO ABRAHAM ABUNDIO ADALBERTO ADAN ADOLFO ADRIAN AGAPITO AGUSTIN ALAN ALBERTO ALDO ALEJANDRO ALEJO ' +
+  'ALFONSO ALFREDO ALONSO ALVARO AMADO AMADOR AMBROSIO ANASTACIO ANDRES ANGEL ANICETO ANSELMO ANTONIO APOLINAR ARCADIO ARIEL ' +
+  'ARMANDO ARNOLDO ARNULFO ARTURO AUDENCIO AURELIO AUSENCIO AXEL BALDOMERO BALTAZAR BARTOLO BARTOLOME BENIGNO BENITO BENJAMIN BERNABE ' +
+  'BERNARDINO BERNARDO BONIFACIO BRAULIO BRAYAN BRIAN BRUNO CAMILO CANDIDO CARLOS CATARINO CAYETANO CELEDONIO CELESTINO CELSO CESAR ' +
+  'CHRISTIAN CIPRIANO CIRILO CLAUDIO CLEMENTE CONSTANTINO CRESCENCIO CRISOFORO CRISPIN CRISTIAN CRISTOBAL DAGOBERTO DAMIAN DANIEL DARIO ' +
+  'DAVID DEMETRIO DIDIER DIEGO DIMAS DIONISIO DOMINGO EDGAR EDGARDO EDMUNDO EDUARDO EDWIN EFRAIN EFREN ELADIO ELEAZAR ELIAS ELIGIO ELISEO ' +
+  'ELIUD ELPIDIO EMANUEL EMILIANO EMILIO EMMANUEL ENOC ENRIQUE EPIFANIO ERASMO ERICK ERIK ERNESTO ESTANISLAO ESTEBAN EUGENIO EULALIO ' +
+  'EUSEBIO EUSTAQUIO EVARISTO EVERARDO EZEQUIEL FABIAN FACUNDO FAUSTINO FAUSTO FEDERICO FELICIANO FELIPE FELIX FERMIN FERNANDO FIDEL ' +
+  'FILEMON FILIBERTO FLAVIO FLORENCIO FLORENTINO FORTINO FRANCISCO FROYLAN FRUMENCIO GABINO GABRIEL GAEL GASPAR GENARO GERARDO GERMAN ' +
+  'GILBERTO GONZALO GREGORIO GUILLERMO GUSTAVO HECTOR HERIBERTO HERMENEGILDO HERMILO HERNAN HILARIO HIPOLITO HOMERO HORACIO HUGO HUMBERTO ' +
+  'IGNACIO ISAAC ISAIAS ISIDRO ISMAEL ISRAEL IVAN JACINTO JACOBO JAIME JAVIER JERONIMO JESUS JOAQUIN JOEL JONATHAN JONATAN JORGE JOSE ' +
+  'JOSUE JUAN JULIAN JULIO JUSTINO JUSTO JUVENAL JUVENTINO KEVIN LADISLAO LAURO LAZARO LEANDRO LEOBARDO LEON LEONARDO LEONCIO LEONEL ' +
+  'LEOPOLDO LIBORIO LINO LORENZO LUCAS LUCIANO LUCIO LUIS MACARIO MAGDALENO MANUEL MARCELINO MARCELO MARCIAL MARCO MARCOS MARGARITO ' +
+  'MARIANO MARIO MARTIN MATEO MATIAS MAURICIO MAURO MAXIMILIANO MAXIMINO MAXIMO MELCHOR MELQUIADES MIGUEL MISAEL MODESTO MOISES NAHUM ' +
+  'NARCISO NATALIO NAZARIO NEFTALI NESTOR NICANOR NICOLAS NOE NORBERTO OCTAVIO ODILON OLEGARIO OMAR ONESIMO ORLANDO OSCAR OSVALDO ' +
+  'OSWALDO PABLO PANFILO PASCUAL PATRICIO PEDRO PLACIDO PORFIRIO PRIMITIVO PRISCILIANO PRUDENCIO RAFAEL RAMIRO RAMON RAUL RAYMUNDO ' +
+  'REINALDO REMIGIO RENE REYMUNDO REYNALDO RICARDO RIGOBERTO ROBERTO RODOLFO RODRIGO ROGELIO ROLANDO ROMAN ROMEO ROMUALDO RUBEN RUFINO ' +
+  'SABINO SALOMON SALVADOR SAMUEL SANTIAGO SANTOS SAUL SEBASTIAN SERAFIN SERGIO SEVERIANO SEVERO SILVESTRE SIMON TEODORO TEOFILO ' +
+  'TIBURCIO TIMOTEO TOMAS TRANQUILINO UBALDO ULISES URIEL VALENTIN VENANCIO VICENTE VICTOR VIRGILIO WENCESLAO WILFRIDO WILLIAM ' +
+  'ZACARIAS ZEFERINO ZENON').split(' ');
+var REG_NOMBRES_F = ('ABIGAIL ADELA ADELAIDA ADELINA ADRIANA AGUSTINA ALBA ALEIDA ALEJANDRA ALICIA ALMA AMALIA AMELIA AMPARO ANA ANABEL ' +
+  'ANAHI ANDREA ANGELA ANGELES ANGELICA ANGELINA ANTONIA ARACELI ARCELIA ARELI ARMIDA ASUNCION AURORA AZUCENA BEATRIZ BENITA BERENICE ' +
+  'BERTA BERTHA BLANCA BRENDA BRISA CANDELARIA CARMEN CAROLINA CATALINA CECILIA CELIA CELINA CINTHIA CITLALI CLARA CLAUDIA CONCEPCION ' +
+  'CONSTANZA CONSUELO CORINA CRISTINA DALIA DAMARIS DANIELA DELFINA DELIA DIANA DOLORES DOMINGA DORA DULCE EDITH ELBA ELENA ELIA ELISA ' +
+  'ELIZABETH ELODIA ELOISA ELSA ELVA ELVIRA EMILIA EMMA ENRIQUETA EPIFANIA ERIKA ESMERALDA ESPERANZA ESTEFANIA ESTELA ESTHER EUGENIA ' +
+  'EVA EVANGELINA EVELYN FABIOLA FATIMA FAUSTINA FELIPA FERNANDA FLOR FLORENCIA FRANCISCA FRIDA GABRIELA GENOVEVA GEORGINA GLADYS GLORIA ' +
+  'GRACIELA GRISELDA GUILLERMINA HERLINDA HERMELINDA HERMINIA HILDA HORTENSIA IGNACIA IMELDA INES IRENE IRIS IRMA ISABEL ISELA ITZEL ' +
+  'IVETTE IVONNE JACINTA JACQUELINE JANET JANETH JAZMIN JESSICA JOSEFA JOSEFINA JOVITA JUANA JUDITH JULIA JULIETA KAREN KARINA KARLA ' +
+  'KENIA LAURA LEONOR LETICIA LIBRADA LIDIA LILIA LILIANA LIZBETH LIZETH LORENA LORENZA LOURDES LUCERO LUCIA LUCINA LUISA LUZ MACRINA ' +
+  'MAGALI MAGALY MAGDALENA MANUELA MARCELA MARGARITA MARIA MARIANA MARIBEL MARICELA MARINA MARISELA MARISOL MARLEN MARLENE MARTA MARTHA ' +
+  'MATILDE MAYRA MELISSA MERCEDES MICAELA MINERVA MIREYA MIRIAM MIRNA MODESTA MONICA NANCY NATALIA NAYELI NELLY NICOLASA NOEMI NOHEMI ' +
+  'NORA NORMA OBDULIA ODILIA OFELIA OLGA OLIVA OLIVIA OTILIA PALOMA PAOLA PASCUALA PATRICIA PAULA PAULINA PERLA PETRA PIEDAD PILAR ' +
+  'PRISCILA RAFAELA RAMONA RAQUEL REBECA REFUGIA REGINA REINA REMEDIOS REYNA RITA ROBERTA ROCIO ROSA ROSALBA ROSALIA ROSALINDA ROSAURA ' +
+  'ROXANA RUTH SABINA SAMANTHA SANDRA SARA SELENE SERAFINA SILVIA SIMONA SOCORRO SOFIA SOLEDAD SONIA SUSANA TANIA TEODORA TERESA ' +
+  'TERESITA TOMASA VALERIA VANESSA VERONICA VICTORIA VIOLETA VIRGINIA VIVIANA XIMENA XOCHITL YADIRA YAZMIN YESENIA YESICA YOLANDA ZAIRA ' +
+  'ZOILA ZULEMA').split(' ');
+// Ambiguos o de nombre compuesto: deciden el otro nombre de pila (el primero manda: «MA. GUADALUPE» = F, «J. GUADALUPE» = vacío).
+// ALEXIS y SALOME (25 nov 2026, revisión): en México se usan para los dos sexos.
+var REG_NOMBRES_AMBIGUOS = ('GUADALUPE ROSARIO TRINIDAD REFUGIO CRUZ NATIVIDAD MERCED PAZ ASCENCION SACRAMENTO VENTURA ALEXIS SALOME').split(' ');
+// Abreviaturas de nombre de pila que se escriben en el censo.
+var REG_NOMBRES_ABREV = { MA: 'MARIA', GPE: 'GUADALUPE', FCO: 'FRANCISCO', FCA: 'FRANCISCA', JSE: 'JOSE', ANT: 'ANTONIO' };
+// Apellidos frecuentes (lista corta): si el nombre empieza con uno que NO es nombre de pila, viene APELLIDOS primero.
+var REG_APELLIDOS = ('GARCIA HERNANDEZ MARTINEZ LOPEZ GONZALEZ PEREZ RODRIGUEZ SANCHEZ RAMIREZ FLORES GOMEZ DIAZ TORRES VAZQUEZ ' +
+  'VASQUEZ MORALES JIMENEZ REYES GUTIERREZ RUIZ MENDOZA AGUILAR ORTIZ CASTILLO MORENO ROMERO ALVAREZ CHAVEZ RIVERA JUAREZ RAMOS ' +
+  'DOMINGUEZ HERRERA MEDINA CASTRO VARGAS GUZMAN VELAZQUEZ MUNOZ ROJAS CONTRERAS SALAZAR LUNA ORTEGA GUERRERO ESTRADA BAUTISTA CORTES ' +
+  'SOTO ALVARADO ESPINOZA ESPINOSA LARA AVILA RIOS CERVANTES SILVA DELGADO VEGA MARQUEZ SANDOVAL CARRILLO MEJIA SOLIS ROSAS IBARRA ' +
+  'VALDEZ NUNEZ CAMACHO NAVARRO PENA MALDONADO ROSALES ACOSTA MIRANDA TREJO VALENCIA NAVA PACHECO HUERTA PADILLA FUENTES CABRERA ' +
+  'MOLINA AYALA ZAMORA CAMPOS MENDEZ BECERRA FIGUEROA OROZCO SERRANO VELASCO CARDENAS OLVERA ROBLES').split(' ');
+var REG_NOMBRES_SEXO = (function () {
+  var d = {};
+  REG_NOMBRES_M.forEach(function (n) { d[n] = 'M'; });
+  REG_NOMBRES_F.forEach(function (n) { d[n] = 'F'; });
+  REG_NOMBRES_AMBIGUOS.forEach(function (n) { d[n] = '?'; });
+  return d;
+})();
+var REG_APELLIDO = (function () { var d = {}; REG_APELLIDOS.forEach(function (n) { d[n] = true; }); return d; })();
+/** Sexo inferido del nombre de pila: 'M', 'F' o '' (no concluyente). Regla: el primer nombre de pila manda; si es ambiguo
+ *  (GUADALUPE, ROSARIO…) decide el siguiente nombre de pila; inicial suelta («J.»), nombre fuera de la lista, sin nombre
+ *  (DESCONOCIDO, RN…) o el orden no es claro: vacío. NO adivina por la terminación.
+ *  Revisión del 25 nov 2026 (el censo escribe los APELLIDOS primero):
+ *  · Se saltan los apellidos frecuentes que no son nombre de pila y los apellidos con partícula («DE LEON», «DE LA CRUZ»,
+ *    «DE LOS SANTOS», «DEL ANGEL»), salvo justo después de MARIA, JOSE o JUAN («MARIA DE JESUS», «JUAN DE LA CRUZ»), donde
+ *    son parte del nombre de pila y no deciden nada.
+ *  · Una inicial después de los apellidos solo se salta si le precede UN solo apellido («PEREZ N JUAN») y lo que sigue
+ *    no es MARIA, JOSE ni un ambiguo («GARCIA J. MARIA» puede ser José María). Con dos apellidos antes («PEREZ
+ *    HERNANDEZ M. JOSE») la inicial es el primer nombre: vacío.
+ *  · Si después del nombre elegido aparece un nombre de pila del OTRO sexo, el orden no es claro («LOPEZ SANTIAGO
+ *    MARIA»: SANTIAGO puede ser apellido) → vacío. Única excepción: el compuesto MARIA/JOSE + nombre del otro sexo
+ *    inmediato («MARIA JOSE», «JOSE MARIA»), donde manda el primero. */
+var REG_NOMBRE_CON_PARTICULA = { MARIA: 1, JOSE: 1, JUAN: 1 };
+function regSexoDeNombre(nombre) {
+  var raw = regTexto(nombre).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z.\s]/g, ' ').replace(/\./g, ' ').split(/\s+/)
+    .filter(function (w) { return w && w !== 'Y'; })
+    .map(function (w) { return REG_NOMBRES_ABREV[w] || w; });
+  if (!raw.length || raw.some(function (w) { return REG_SIN_NOMBRE.test(w); })) return '';
+  // Unidades: palabra suelta {w, t:'w'} o bloque con partícula («DE LA CRUZ»): {t:'ap'} apellido / {t:'nb'} parte del nombre.
+  var u = [];
+  for (var k = 0; k < raw.length; k++) {
+    if (!REG_PARTICULAS[raw[k]]) { u.push({ w: raw[k], t: 'w' }); continue; }
+    while (k + 1 < raw.length && REG_PARTICULAS[raw[k + 1]]) k++;
+    if (k + 1 < raw.length) k++;                                  // la palabra que sigue a la partícula va en el bloque
+    var prev = u[u.length - 1];
+    u.push({ w: '', t: prev && prev.t === 'w' && REG_NOMBRE_CON_PARTICULA[prev.w] ? 'nb' : 'ap' });
+  }
+  var sexoDe = function (x) { return x && x.t === 'w' ? REG_NOMBRES_SEXO[x.w] : undefined; };
+  var i = 0, nAp = 0;
+  // APELLIDOS primero: se saltan los apellidos frecuentes, los de partícula y, con un solo apellido antes, su inicial.
+  while (i < u.length) {
+    var x = u[i];
+    if (x.t === 'ap' || (REG_APELLIDO[x.w] && !REG_NOMBRES_SEXO[x.w])) { nAp++; i++; continue; }
+    if (i > 0 && x.t === 'w' && x.w.length === 1) {
+      if (nAp !== 1) return '';
+      var sig = u[i + 1];
+      if (!sig || sig.w === 'MARIA' || sig.w === 'JOSE' || sexoDe(sig) === '?') return '';
+      i++; continue;
+    }
+    break;
+  }
+  if (i >= u.length || u[i].t !== 'w' || u[i].w.length === 1) return '';
+  var s = sexoDe(u[i]), desde = i + 1;
+  if (!s) return '';
+  if (s === '?') {
+    s = sexoDe(u[i + 1]);
+    if (s !== 'M' && s !== 'F') return '';
+    desde = i + 2;
+  } else if ((u[i].w === 'MARIA' || u[i].w === 'JOSE') && (sexoDe(u[i + 1]) === 'M' || sexoDe(u[i + 1]) === 'F')) {
+    desde = i + 2;                                                // compuesto MARIA JOSE / JOSE MARIA: manda el primero
+  }
+  // Orden dudoso: un nombre de pila del otro sexo más adelante → vacío.
+  for (var j = desde; j < u.length; j++) {
+    var o = sexoDe(u[j]);
+    if ((o === 'M' || o === 'F') && o !== s) return '';
+  }
+  return s;
 }
 /** Expediente normalizado como la app (_plExpNorm); '' si no parece un expediente (sin 4 dígitos, o solo ceros). */
 function regExpValido(v) {
@@ -2339,8 +2575,33 @@ var REG_EGRESO_APP = { alta: 'Alta a domicilio', defuncion: 'Defunción', cambio
 // Tipos con los que el paciente salió VIVO del servicio (Defunción = 0). En «Cambio de servicio» el desenlace posterior en
 // el hospital no se conoce: cuenta para la mortalidad del servicio, no para la hospitalaria.
 var REG_EGRESO_VIVO = ['Alta', 'Alta voluntaria', 'Traslado', 'Contrarreferencia', 'Cambio de servicio', 'Fuga'];
+/** Etiqueta del motivo REGISTRADO en la copia (note_data._egreso_tipo), con su fuente: «… (registrado en la app)» si lo
+ *  eligió una persona; 25 nov 2026: «… (censo: sección ALTAS)» o «… (censo: sección DEFUNCIONES)» si lo tomó el script
+ *  del censo de esa sección de la hoja (_egreso_tipo_por = 'Censo (hoja · ALTAS)' / 'Censo (hoja · DEFUNCIONES)').
+ *  Las dos son motivo registrado (no inferido): cuentan igual para la mortalidad. '' si no hay motivo válido. */
+function regEgresoElegido_(nd0) {
+  nd0 = regObj(nd0);
+  var t = REG_EGRESO_APP[regTexto(nd0._egreso_tipo)];
+  if (!t) return '';
+  var por = regTexto(nd0._egreso_tipo_por);
+  if (/^Censo \(hoja/.test(por)) {
+    var sec = por.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return t + (/DEFUNCI/.test(sec) ? ' (censo: sección DEFUNCIONES)' : (/ALTA/.test(sec) ? ' (censo: sección ALTAS)' : ' (censo)'));
+  }
+  return t + ' (registrado en la app)';
+}
+// Sufijo de la fuente de un motivo registrado (se quita antes de clasificar: «(censo: sección DEFUNCIONES)» no debe volver
+// defunción a una contrarreferencia).
+var REG_EGRESO_SUFIJO = /\s*\((REGISTRADO EN LA APP|CENSO(: SECCI[OÓ]N [A-Z]+)?)\)\s*$/i;
+/** Fuente del motivo registrado según su etiqueta: 'censo-altas', 'censo-defunciones', 'censo', 'app' o ''. */
+function regEgresoFuente_(motivo) {
+  var m = REG_EGRESO_SUFIJO.exec(regTexto(motivo));
+  if (!m) return '';
+  var x = m[1].toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return x === 'REGISTRADO EN LA APP' ? 'app' : (/DEFUNCIONES/.test(x) ? 'censo-defunciones' : (/ALTAS/.test(x) ? 'censo-altas' : 'censo'));
+}
 function regEgresoTipo(motivo, estado) {
-  var m = regTexto(motivo).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  var m = regTexto(motivo).replace(REG_EGRESO_SUFIJO, '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   var s = m + ' ' + regTexto(estado).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   if (/DUPLICADO/.test(m)) return 'Duplicado (no es otro episodio)';
   if (/BORRADO EN BD/.test(m)) return 'Borrado en la base (revisar)';
@@ -2366,7 +2627,7 @@ function regEgresoTipo(motivo, estado) {
 function regEgresoPeso(motivo, estado) {
   var m = regTexto(motivo).toUpperCase();
   if (!m.trim()) return 0;
-  if (/\(REGISTRADO EN LA APP\)$/.test(m)) return 4;   // lo eligió una persona (Papelera o al dar de alta): manda
+  if (regEgresoFuente_(motivo)) return 4;   // lo eligió una persona (Papelera o al dar de alta) o la sección ALTAS/DEFUNCIONES del censo: manda
   if (/CAMBIOS DE ESTE IPAD|CAMA REASIGNADA \(OTRA PERSONA|BORRADO EN BD/.test(m)) return 1;
   var t = regEgresoTipo(motivo, estado);
   return (t === 'Motivo no registrado' || t === 'Duplicado (no es otro episodio)') ? 2 : 3;
@@ -3125,13 +3386,15 @@ var REG_COMPLETITUD = [
   ['Edad calculada con la fecha de nacimiento (WinLab)', null, function (x) { return x.e['Edad al ingreso (calculada)'] !== ''; }],
   ['Sexo (cualquier fuente)', null, function (x) { return x.e['Sexo'] !== ''; }],
   ['Sexo (escrito en la tarjeta)', null, function (x) { return x.e['Sexo (fuente)'] === REG_SEXO_TARJETA; }],
+  // 25 nov 2026: el inferido del nombre se cuenta aparte (no se mezcla con lo escrito en la tarjeta).
+  ['Sexo (inferido del nombre)', null, function (x) { return x.e['Sexo (fuente)'] === REG_SEXO_NOMBRE; }],
   ['Fecha de ingreso', null, function (x) { return x.e['Fecha de ingreso'] !== ''; }],
   ['Tipo de egreso (motivo registrado)', function (x) { return x.e['Egreso observado'] === 1; }, function (x) { return x.e['Defunción'] !== ''; }],
   ['Dx principal (elegido o inferido)', null, function (x) { return x.e['Dx principal'] !== ''; }],
   ['Dx principal elegido en la app', null, function (x) { return x.e['Dx principal (fuente)'] === 'Elegido en la app'; }],
   ['Antecedentes (APP)', null, function (x) { return x.e['Charlson (calculable)'] === 1; }],
   ['Peso', null, function (x) { return x.e['Peso (kg)'] !== ''; }],
-  ['Talla', null, function (x) { return x.e['Talla (m)'] !== ''; }],
+  // 25 nov 2026: «Talla» ya no se mide (la talla no se registra en este servicio). IMC se sigue calculando si la hay.
   ['Al menos un laboratorio', null, function (x) { return x.e['Fechas con labs (n)'] > 0; }],
   ['Dos o más creatininas', null, function (x) { return x.e['Creatinina basal (mg/dL)'] !== ''; }],
   ['Albúmina', null, function (x) { return x.e['Hipoalbuminemia (<3.5)'] !== ''; }],
@@ -3193,7 +3456,7 @@ function regFlujo_(eps, extra) {
   ];
   var quedan = eps.slice(), filas = [['Episodios en el registro', eps.length]];
   pasos.forEach(function (p) { var n = quedan.length; quedan = quedan.filter(function (e) { return !p[1](e); }); filas.push([p[0], n - quedan.length]); });
-  filas.push(['= Episodios analizables (egreso con desenlace conocido)', quedan.length]);
+  filas.push(['Episodios analizables (egreso con desenlace conocido)', quedan.length]);
   filas.push(['Analizables operados', quedan.filter(function (e) { return e['Cirugías (n)'] > 0; }).length]);
   filas.push(['Analizables con laboratorio seriado (2 o más fechas)', quedan.filter(function (e) { return e['Fechas con labs (n)'] >= 2; }).length]);
   filas.push(['Analizables sin fecha de ingreso (cuentan para mortalidad; no tienen estancia)', quedan.filter(function (e) { return e['Fecha de ingreso'] === ''; }).length]);
@@ -3759,19 +4022,25 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     var edadTxt = regTexto(primero['Edad']) || regTexto(u['Edad']), edad = regEdadAnios(edadTxt);
     if (edad === '') g.calidad.push(edadTxt.trim() ? 'edad no interpretable' : 'sin edad registrada');
     // Sexo: el de la tarjeta (cualquier parte); si no, el de WinLab, y se dice. WinLab con los dos sexos no se usa.
+    // 25 nov 2026: si tampoco, el inferido del nombre de pila («Inferido del nombre»); si la tarjeta o WinLab no coinciden
+    // con el nombre, mandan ellas y se anota en «Calidad de datos» (solo las letras: nada del nombre).
     var sexo = '', sexoFuente = '', wlSexo = regWlSexoPaciente(sexosWl, g.exp, g.nombre);
-    var deWl = function (id) { return regTexto(P[id]['Sexo (fuente)']).trim() === REG_SEXO_WL; };
+    var deWl = function (id) { var f = regTexto(P[id]['Sexo (fuente)']).trim(); return f === REG_SEXO_WL || f === REG_SEXO_NOMBRE; };
+    var sexoNombre = regSexoDeNombre(g.nombre || u['Nombre']);
     g.partes.some(function (id) { sexo = deWl(id) ? '' : regSexo(P[id]['Sexo']); return !!sexo; });
     if (sexo) {
       sexoFuente = REG_SEXO_TARJETA;
       if ((wlSexo === 'F' || wlSexo === 'M') && wlSexo !== sexo) g.calidad.push('el sexo de la tarjeta (' + sexo + ') no coincide con el de WinLab (' + wlSexo + '): revisar');
     } else if (wlSexo !== '?') {
       sexo = wlSexo;
-      if (!sexo) g.partes.some(function (id) { sexo = deWl(id) ? regSexo(P[id]['Sexo']) : ''; return !!sexo; });
+      if (!sexo) g.partes.some(function (id) { sexo = regTexto(P[id]['Sexo (fuente)']).trim() === REG_SEXO_WL ? regSexo(P[id]['Sexo']) : ''; return !!sexo; });
       if (sexo) sexoFuente = REG_SEXO_WL;
     }
+    if (!sexo && sexoNombre) { sexo = sexoNombre; sexoFuente = REG_SEXO_NOMBRE; }
+    else if (sexo && sexoNombre && sexoNombre !== sexo) g.calidad.push('el sexo inferido del nombre (' + sexoNombre + ') no coincide con el de ' + (sexoFuente === REG_SEXO_TARJETA ? 'la tarjeta' : 'WinLab') + ' (' + sexo + '): manda ' + (sexoFuente === REG_SEXO_TARJETA ? 'la tarjeta' : 'WinLab'));
     if (wlSexo === '?') g.calidad.push('WinLab trae los dos sexos para este expediente y nombre: no se usó');
     if (!sexo) g.calidad.push('sin sexo registrado');
+    g.sexo = sexo; g.sexoFuente = sexoFuente;   // 25 nov 2026: para «Seguimiento de operados»
     var estancia = regDiasSigno(g.ingreso, g.fin);
     if (estancia !== '' && estancia < 0) { g.calidad.push('el egreso es anterior al ingreso'); estancia = ''; }
     // 24 nov 2026: las cirugías del episodio se arman en el paso 5b (los cultivos necesitan sus fechas).
@@ -3933,7 +4202,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
 
     // Por completar (con nombres, para el equipo): hospitalizados y egresados de los últimos 30 días. 24 nov 2026: el
     // egresado SIN MOTIVO entra sin límite de días (el motivo registrado después sí llega al registro) y va primero; la
-    // talla ya no se pide por paciente (casi nadie la tiene: diluía la lista), solo se cuenta en el Resumen mensual.
+    // talla no se pide (25 nov 2026: ya no se mide en ningún lado). El sexo inferido del nombre ya no se pide.
     var falta = [];
     if (g.estado === 'Egresado' && fila['Defunción'] === '' && g.tipo !== 'No fue egreso') falta.push('motivo del egreso');
     if (!sexo) falta.push('sexo');
@@ -3951,7 +4220,7 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     }
     // Para el resumen mensual.
     resumenEps.push({ ingreso: g.ingreso, egreso: fila['Egreso observado'] === 1 ? g.egreso : '', defuncion: fila['Defunción'], estancia: fila['Días de estancia'],
-      reint: fila['Reintervención'], reintNoPlan: reintNoPlan, re30: fila['Reingreso a 30 días'], dx: dxP.label, incompleto: falta.length > 0, sinTalla: pt.talla === '', excluir: g.excluir, sexo: sexo ? 1 : 0, sinLabs: g.labs.fechas ? 0 : 1 });
+      reint: fila['Reintervención'], reintNoPlan: reintNoPlan, re30: fila['Reingreso a 30 días'], dx: dxP.label, incompleto: falta.length > 0, excluir: g.excluir, sexo: sexo ? 1 : 0, sinLabs: g.labs.fechas ? 0 : 1 });
     // 24 nov 2026: la cirugía sin fecha (casi todas las inferidas) ya no se pierde del Resumen mensual: va al mes del
     // ingreso del episodio (o del egreso) y se cuenta aparte como «sin fecha exacta».
     if (g.excluir !== 1) cxs.forEach(function (c) { resumenCxs.push({ f: c.f, fEstimada: c.f ? '' : (g.ingreso || g.egreso), grupo: c.grupo, tipo: c.tipo, abordaje: c.abordaje, clavien: c.clavien, ep: g.codigo }); });
@@ -3972,6 +4241,11 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
     // Tipo de egreso PROBABLE: solo en el egresado sin motivo. Nunca toca «Defunción» ni «Tipo de egreso».
     var dn = egresado && nx && def !== 1 ? regDiasSigno(g.egreso, nx.ingreso) : '';
     if (dn !== '' && dn < 0) dn = '';
+    // 25 nov 2026: el motivo registrado que tomó el script del censo de su sección ALTAS o DEFUNCIONES lo dice aquí.
+    var fuenteReg = egresado ? regEgresoFuente_(g.motivo) : '';
+    if (fuenteReg === 'censo-altas') fila['Fuente del tipo'] = 'Censo (hoja): sección ALTAS';
+    else if (fuenteReg === 'censo-defunciones') fila['Fuente del tipo'] = 'Censo (hoja): sección DEFUNCIONES';
+    else if (fuenteReg === 'censo') fila['Fuente del tipo'] = 'Censo (hoja)';
     if (egresado && def === '') {
       var renglones = [regTexto(u['Pendientes']), regTexto(u['Guardia vigente'])];
       regArr(guardiaDe[g.ultima]).forEach(function (r) { if (regTexto(r['Vigente']) !== 'No') renglones.push(regTexto(r['Renglón'])); });
@@ -4090,7 +4364,9 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
   // estaban en la hoja conservan su renglón: el orden solo se nota en las filas nuevas.
   porCompletar.sort(function (a, b) { return (a.sinMotivo ? 0 : 1) - (b.sinMotivo ? 0 : 1) || (a.sinMotivo ? regTexto(b.egreso).localeCompare(regTexto(a.egreso)) : 0) || a.n - b.n; });
   out[REG_POR_COMPLETAR] = porCompletar.map(function (x) { return x.fila; });
-  out[REG_AN_RESUMEN] = regResumenMensual(resumenEps, resumenCxs, out[REG_AN_CULTIVOS]);
+  out[REG_AN_RESUMEN] = regResumenMensual(resumenEps, resumenCxs, out[REG_AN_CULTIVOS], fus[REG_PROC_CENSO]);
+  // 25 nov 2026 (registro 2026.11.26.2): seguimiento de operados (con nombres).
+  out[REG_SEGUIMIENTO] = regSeguimientoOperados_({ procs: fus[REG_PROC_CENSO], personas: listaPersonas, P: P, sexosWl: sexosWl, hoy: hoy });
   // 24 nov 2026: completitud por mes, flujo de la cohorte e indicadores de calidad (solo cuentas), de las filas de esta corrida.
   out[REG_AN_COMPLETITUD] = regCompletitud_(grupos.map(function (g) { return { e: g.fila, exp: !!g.exp, sv01: !!g.sv01 }; }), out[REG_AN_CIRUGIAS]);
   out[REG_AN_FLUJO] = regFlujo_(out[REG_AN_EPISODIOS], { cultivosSinEpisodio: out[REG_AN_CULTIVOS].filter(function (c) { return !c['ID episodio']; }).length,
@@ -4102,13 +4378,22 @@ function regAnalisis(fus, clave, restauraciones, hoy, codigo) {
 
 /** Resumen mensual del servicio: ingresos por mes de ingreso; egresos, mortalidad, estancia y reingresos por mes de
  *  egreso; cirugías por mes de la cirugía; cultivos por mes de toma. Sin duplicados (Excluir = 1). Solo cuentas. */
-function regResumenMensual(eps, cxs, cultivos) {
+function regResumenMensual(eps, cxs, cultivos, procs) {
   var meses = {}, mes = function (f) { f = regFecha(f); return f ? f.slice(0, 7) : ''; };
-  var M = function (m) { return meses[m] || (meses[m] = { ing: 0, egr: [], cx: [], cult: [], dx: {}, incompletos: 0, sinTalla: 0, conSexo: 0, sinLabs: 0 }); };
+  var M = function (m) { return meses[m] || (meses[m] = { ing: 0, egr: [], cx: [], cult: [], dx: {}, incompletos: 0, conSexo: 0, sinLabs: 0, proc: 0, procCg: 0, procAmb: 0 }); };
+  // 25 nov 2026: procedimientos del censo por mes de su fecha (filas vigentes de «Procedimientos del censo»).
+  regArr(procs).forEach(function (r) {
+    var m = mes(r && r['Fecha']);
+    if (!m || regTexto(r['Vigente']) === 'No') return;
+    var a = M(m); a.proc++;
+    if (regEsCg_(r['Especialidad'])) a.procCg++;
+    if (regTexto(r['Ambulatorio']) === 'Sí') a.procAmb++;
+  });
+  var desdeProc = REG_PROC_CENSO_DESDE.slice(0, 7);
   regArr(eps).forEach(function (e) {
     if (e.excluir === 1) return;
     var mi = mes(e.ingreso), me = mes(e.egreso);
-    if (mi) { var a = M(mi); a.ing++; if (e.dx) a.dx[e.dx] = (a.dx[e.dx] || 0) + 1; if (e.incompleto) a.incompletos++; if (e.sinTalla) a.sinTalla++; if (e.sexo) a.conSexo++; if (e.sinLabs) a.sinLabs++; }
+    if (mi) { var a = M(mi); a.ing++; if (e.dx) a.dx[e.dx] = (a.dx[e.dx] || 0) + 1; if (e.incompleto) a.incompletos++; if (e.sexo) a.conSexo++; if (e.sinLabs) a.sinLabs++; }
     if (me) M(me).egr.push(e);
   });
   regArr(cxs).forEach(function (c) { var m = mes(c.f) || mes(c.fEstimada); if (m) M(m).cx.push(c); });
@@ -4140,11 +4425,119 @@ function regResumenMensual(eps, cxs, cultivos) {
       'Gérmenes (más frecuentes)': top(cuenta(pos, function (c) { return regTexto(c['Germen']).split(/\s*\+\s*/).map(function (x) { return x.replace(/\s*\(.*\)\s*$/, '').trim(); }).filter(function (x) { return x && !/^POSITIVO/i.test(x); }); })),
       'Ingresos con datos incompletos (n)': a.incompletos, 'Vigente': 'Sí',
       'Cirugías sin fecha exacta (n)': a.cx.filter(function (c) { return !mes(c.f); }).length,
-      'Reintervenciones no planeadas (n)': a.egr.filter(function (e) { return e.reintNoPlan === 1; }).length, 'Ingresos sin talla (n)': a.sinTalla,
+      'Reintervenciones no planeadas (n)': a.egr.filter(function (e) { return e.reintNoPlan === 1; }).length, 'Ingresos sin talla (n)': '',
       // 24 nov 2026: porcentajes de llenado.
-      'Egresos con motivo (%)': pct(conDes.length, a.egr.length), 'Con sexo (%)': pct(a.conSexo, a.ing), 'Episodios sin labs (n)': a.sinLabs
+      'Egresos con motivo (%)': pct(conDes.length, a.egr.length), 'Con sexo (%)': pct(a.conSexo, a.ing), 'Episodios sin labs (n)': a.sinLabs,
+      // 25 nov 2026: vacías antes del mes en que empezó la captura (no hay dato, no es cero).
+      'Procedimientos en el censo (n)': m < desdeProc ? '' : a.proc, 'Procedimientos en el censo de CG (n)': m < desdeProc ? '' : a.procCg, 'Ambulatorios (n)': m < desdeProc ? '' : a.procAmb
     };
   });
+}
+
+/** ¿La especialidad es Cirugía General? «CG», «CIRUGIA GENERAL» o una combinación que la incluye («CG/URO»). */
+function regEsCg_(esp) {
+  var s = regNorm_(esp).trim();
+  return /\bCIRUGIA GENERAL\b/.test(s) || s.split(/[\/,+&\s]+/).indexOf('CG') !== -1;
+}
+
+/** «Seguimiento de operados» (25 nov 2026, registro 2026.11.26.2). Una fila por persona (expediente válido + nombre
+ *  compatible, regMismaPersona; las personas del registro son las de «Clave de seudónimos») que aparece en «Procedimientos
+ *  del censo» o tiene cirugías en el registro (las de cada episodio sin la programación sin confirmar ni las tarjetas
+ *  duplicadas). Un procedimiento del censo ligado a un episodio va con la persona de ese episodio; si no, con la del mismo
+ *  expediente y nombre compatible; si no hay, es una persona nueva (operado ambulatorio, sin episodio en el registro).
+ *  o: { procs, personas (listaPersonas de regAnalisis), P (Pacientes por id), sexosWl, hoy }. Ordenada por último
+ *  procedimiento, el más reciente arriba. CON NOMBRES. */
+function regSeguimientoOperados_(o) {
+  var hoy = o.hoy || '', P = o.P || {}, ents = [], porExp = {};
+  var agregar = function (e) { ents.push(e); if (e.exp) (porExp[e.exp] = porExp[e.exp] || []).push(e); };
+  regArr(o.personas).forEach(function (p) {
+    var gs = regArr(p && p.grupos).filter(function (g) { return g.excluir !== 1; });
+    if (!gs.length) return;
+    var exp = '';
+    gs.some(function (g) { exp = g.exp || ''; return !!exp; });
+    agregar({ exp: exp, nombres: gs.map(function (g) { return regTexto(g.nombre).trim(); }).filter(Boolean), grupos: gs, procs: [] });
+  });
+  var nombreClave = function (n) { return regNorm_(n).replace(/\s+/g, ' ').trim(); }, sinExp = {};
+  regArr(o.procs).forEach(function (r) {
+    if (!r || regTexto(r['Vigente']) === 'No') return;
+    var exp = regExpValido(r['Expediente']), nombre = regTexto(r['Nombre']).trim(), idEp = regTexto(r['ID episodio']).trim(), e = null;
+    if (!exp) {
+      // 25 nov 2026 (revisión): expediente que el censo aceptó y el registro no («123»): entra por el expediente tal cual
+      // y el nombre (sin acentos) en vez de perderse.
+      var crudo = regTexto(r['Expediente']).trim(), nn = nombreClave(nombre);
+      if (!crudo && !nn) return;
+      e = sinExp[crudo + '|' + nn];
+      if (!e) { e = sinExp[crudo + '|' + nn] = { exp: '', expCrudo: crudo, nombres: [], grupos: [], procs: [] }; ents.push(e); }
+      if (nombre && e.nombres.indexOf(nombre) === -1) e.nombres.push(nombre);
+      e.procs.push(r);
+      return;
+    }
+    if (idEp) regArr(porExp[exp]).some(function (x) { if (x.grupos.some(function (g) { return g.partes.indexOf(idEp) !== -1; })) e = x; return !!e; });
+    if (!e) regArr(porExp[exp]).some(function (x) { if (x.nombres.some(function (n) { return regMismaPersona(n, nombre); })) e = x; return !!e; });
+    if (!e) { e = { exp: exp, nombres: [], grupos: [], procs: [] }; agregar(e); }
+    if (nombre && e.nombres.indexOf(nombre) === -1) e.nombres.push(nombre);
+    e.procs.push(r);
+  });
+  var filas = [];
+  ents.forEach(function (e) {
+    var cxs = [];
+    e.grupos.forEach(function (g) { regArr(g.cxs).forEach(function (c) { cxs.push(c); }); });
+    if (!e.procs.length && !cxs.length) return;
+    var fProcs = {};
+    e.procs.forEach(function (r) { var f = regFecha(r['Fecha']); if (f) fProcs[f] = true; });
+    var fechas = Object.keys(fProcs).concat(cxs.map(function (c) { return c.f; }).filter(Boolean)).sort();
+    var primer = fechas[0] || '', ultimo = fechas.length ? fechas[fechas.length - 1] : '';
+    // Lo más reciente (nombre, edad, diagnóstico): del procedimiento del censo o del episodio, por fecha; en empate, el
+    // censo. Si al más reciente le falta un dato, se toma del siguiente.
+    var fuentes = [];
+    e.grupos.forEach(function (g) { var u = P[g.ultima] || {}; fuentes.push({ f: g.fin || g.ingreso || '', o: 1, nombre: regTexto(u['Nombre']) || regTexto(g.nombre), edad: regTexto(u['Edad']), dx: regTexto(u['Diagnóstico']) }); });
+    e.procs.forEach(function (r) { fuentes.push({ f: regFecha(r['Fecha']), o: 0, nombre: regTexto(r['Nombre']), edad: regTexto(r['Edad']), dx: regTexto(r['Diagnóstico']) }); });
+    fuentes.sort(function (a, b) { return b.f.localeCompare(a.f) || a.o - b.o; });
+    var primero = function (k) { for (var i = 0; i < fuentes.length; i++) if (regTexto(fuentes[i][k]).trim()) return regTexto(fuentes[i][k]).trim(); return ''; };
+    var nombre = primero('nombre');
+    // Nombre de la fila (parte de la clave): el PRIMERO que se vio (episodio por ingreso o procedimiento por fecha), sin
+    // acentos ni espacios dobles; así no cambia cuando la fuente más reciente lo escribe distinto. 25 nov 2026 (revisión).
+    var antiguas = [];
+    e.grupos.forEach(function (g) { antiguas.push({ f: g.ingreso || g.fin || '', o: 0, nombre: regTexto(g.nombre) }); });
+    e.procs.forEach(function (r) { antiguas.push({ f: regFecha(r['Fecha']), o: 1, nombre: regTexto(r['Nombre']) }); });
+    antiguas.sort(function (a, b) { return (a.f || '9999').localeCompare(b.f || '9999') || a.o - b.o; });
+    var nombreFila = '';
+    antiguas.some(function (x) { nombreFila = nombreClave(x.nombre); return !!nombreFila; });
+    // Sexo: el del episodio más reciente que lo tenga (con su fuente); si no, WinLab; si no, inferido del nombre.
+    var gsRec = e.grupos.slice().sort(function (a, b) { return (b.ingreso || '').localeCompare(a.ingreso || ''); });
+    var sexo = '', sexoF = '';
+    gsRec.some(function (g) { if (g.sexo) { sexo = g.sexo; sexoF = g.sexoFuente || ''; } return !!sexo; });
+    if (!sexo) {
+      var w = regWlSexoPaciente(o.sexosWl, e.exp, nombre);
+      if (w === 'F' || w === 'M') { sexo = w; sexoF = REG_SEXO_WL; }
+      else { sexo = regSexoDeNombre(nombre); sexoF = sexo ? REG_SEXO_NOMBRE : ''; }
+    }
+    var esps = [];
+    var esp = function (x) { var t = regNorm_(x).replace(/\s+/g, ' ').trim(); if (t && esps.indexOf(t) === -1) esps.push(t); };
+    e.procs.forEach(function (r) { esp(r['Especialidad']); });
+    var ids = [];
+    e.grupos.slice().sort(function (a, b) { return (a.ingreso || '9999').localeCompare(b.ingreso || '9999'); }).forEach(function (g) {
+      g.partes.forEach(function (id) { if (ids.indexOf(id) === -1) ids.push(id); esp((P[id] || {})['Especialidad']); });
+    });
+    var ultEg = null;
+    e.grupos.forEach(function (g) { if (g.egreso && (!ultEg || g.egreso > ultEg.egreso)) ultEg = g; });
+    var dias = ultimo ? regDiasSigno(ultimo, hoy) : '';
+    if (dias !== '' && dias > REG_SEGUIMIENTO_DIAS_MAX) dias = '';
+    // Reingresos: episodios que ingresaron después del primer procedimiento, sin el que CONTIENE ese procedimiento (cirugía
+    // de urgencias la víspera del ingreso al servicio: el episodio en que se operó no es reingreso). 25 nov 2026 (revisión).
+    var conPrimer = function (g) {
+      return regArr(g.cxs).some(function (c) { return c.f === primer; })
+        || e.procs.some(function (r) { return regFecha(r['Fecha']) === primer && g.partes.indexOf(regTexto(r['ID episodio']).trim()) !== -1; });
+    };
+    filas.push({ 'Expediente': e.exp || e.expCrudo || '', 'Nombre': nombreFila, 'Nombre más reciente': nombre, 'Edad': primero('edad'), 'Sexo': sexo, 'Sexo (fuente)': sexoF,
+      'Primer procedimiento': primer, 'Último procedimiento': ultimo, 'Procedimientos en el censo (n)': Object.keys(fProcs).length, 'Cirugías registradas (n)': cxs.length,
+      'Especialidades': esps.join(' · '), 'Diagnóstico más reciente': primero('dx'), 'ID episodios': ids.join(', '),
+      '¿Hospitalizado ahora?': e.grupos.some(function (g) { return g.estado === 'Hospitalizado'; }) ? 'Sí' : 'No',
+      'Último egreso': ultEg ? ultEg.egreso : '', 'Motivo del último egreso': ultEg ? regTexto(ultEg.tipo) : '',
+      'Días desde el último procedimiento': dias === '' ? '' : dias,
+      'Reingresos posteriores (n)': primer ? e.grupos.filter(function (g) { return g.ingreso && g.ingreso > primer && !conPrimer(g); }).length : '', 'Vigente': 'Sí' });
+  });
+  return filas.sort(function (a, b) { return regTexto(b['Último procedimiento']).localeCompare(regTexto(a['Último procedimiento'])) || regTexto(a['Expediente']).localeCompare(regTexto(b['Expediente'])); });
 }
 
 /** Seudónimo: SHA-256 de (sal secreta + identidad), 12 caracteres hexadecimales. La sal vive en las propiedades del
@@ -4202,7 +4595,7 @@ function regVariables_() {
   add(E, 'Es reingreso (≤30 días)', '0/1', '', '1 si este ingreso ocurrió 0–30 días después del egreso anterior; 0 si después; vacío si no hay episodio anterior registrado (el registro empezó en 2026: los primeros pueden ser reingresos de antes).');
   add(E, 'Reingreso a 30 días', '0/1', '', '1 si el paciente volvió a ingresar a este servicio 0–30 días después de este egreso; 0 si no y ya pasaron 30 días; vacío si sigue hospitalizado, murió o aún no pasan 30 días. Solo ve reingresos a los servicios que usan la app.');
   add(E, 'Edad (años)', 'número', 'años', 'Edad del censo al ingreso (meses y días convertidos a fracción de año). Vacío si no se entiende.');
-  add(E, 'Sexo · Sexo (fuente)', 'texto', '', 'F, M o vacío (sin registrar), con la misma regla que la app. Fuente: «Tarjeta» (lo escrito en la app) o «de WinLab» (la tarjeta no lo tiene: se tomó del encabezado de laboratorio de los reportes del paciente, con la regla de identidad del robot y su mismo expediente y nombre). Si WinLab trae los dos sexos para la persona no se usa; si la tarjeta y WinLab no coinciden manda la tarjeta y se anota en «Calidad de datos».');
+  add(E, 'Sexo · Sexo (fuente)', 'texto', '', 'F, M o vacío (sin registrar), con la misma regla que la app. Fuente: «Tarjeta» (lo escrito en la app) o «de WinLab» (la tarjeta no lo tiene: se tomó del encabezado de laboratorio de los reportes del paciente, con la regla de identidad del robot y su mismo expediente y nombre). Si WinLab trae los dos sexos para la persona no se usa; si la tarjeta y WinLab no coinciden manda la tarjeta y se anota en «Calidad de datos». Desde el 25 nov 2026, tercera fuente (la de menor prioridad, solo si la tarjeta y WinLab no lo traen): «Inferido del nombre», del primer nombre de pila con un diccionario de nombres frecuentes en México (MA. = María; el primero manda: JOSÉ MARÍA = M, MARÍA JOSÉ = F; GUADALUPE, ROSARIO, TRINIDAD, REFUGIO, CRUZ… los decide el otro nombre; ALEXIS y SALOMÉ también; si el nombre viene con APELLIDOS primero se saltan los apellidos frecuentes y los de partícula, como DE LEÓN o DE LA CRUZ). Nombre fuera de la lista, inicial suelta, inicial tras dos apellidos o no concluyente (un nombre de pila del otro sexo más adelante, p. ej. un apellido que también es nombre, como SANTIAGO o LEÓN): vacío (nunca se adivina por la terminación). Error esperado: bajo en los que sí se clasifican (no medido contra una muestra real; ante la duda queda vacío); sobre todo nombres poco usuales del otro sexo). Si la tarjeta o WinLab no coinciden con el nombre, mandan ellas y se anota en «Calidad de datos». Aquí no va el nombre: solo la letra y la fuente.');
   add(E, 'Especialidad · Sección', 'texto', '', 'Del censo, en la última parte del episodio, en mayúsculas y sin acentos. Solo pasa lo que tiene la forma esperada (códigos de especialidad del catálogo; palabras de salas conocidas): cualquier otro texto se escribe «' + REG_NO_VALIDO + '» (el censo de la hoja a veces trae texto corrido, incluso nombres, y esta pestaña se comparte). Sesgo: una especialidad o sala nueva sale «' + REG_NO_VALIDO + '» hasta que se agregue al catálogo del script.');
   add(E, 'Fecha de ingreso', 'texto AAAA-MM-DD', '', 'Fecha de ingreso del censo (la más antigua de las partes).');
   add(E, 'Fecha de egreso', 'texto AAAA-MM-DD', '', 'Fecha del egreso en la app o, si no la hay, la fecha en que se archivó. Vacío si sigue hospitalizado o salió sin registro.');
@@ -4211,7 +4604,7 @@ function regVariables_() {
   add(E, 'Egreso observado', '0/1', '', '1 si se registró el egreso con fecha (y no es duplicado). Para análisis de supervivencia: 0 = censurado.');
   add(E, 'Tipo de egreso', 'texto', '', 'Alta, Defunción, Cambio de servicio, Contrarreferencia, Traslado, Alta voluntaria, Fuga, Otro, No fue egreso, Motivo no registrado, Duplicado (no es otro episodio) o Borrado en la base (revisar). Casi todos los egresos salen del censo de la hoja sin decir si fue alta o defunción: hasta que se registre el motivo, «Defunción» NO permite calcular mortalidad.');
   add(E, 'Defunción', '0/1', '', '1 = registrada como defunción; 0 = salió vivo del servicio (alta, alta voluntaria, traslado, contrarreferencia, fuga o cambio de servicio; en cambio de servicio el desenlace posterior en el hospital no se conoce); vacío = desconocido (motivo no registrado, «otro motivo», «no fue egreso», hospitalizado). NUNCA tratar vacío como 0.');
-  add(E, 'Motivo de egreso (app)', 'texto', '', 'Etiqueta original del egreso en la app (p. ej. «RETIRADO DEL CENSO (hoja)»).');
+  add(E, 'Motivo de egreso (app)', 'texto', '', 'Etiqueta original del egreso en la app (p. ej. «RETIRADO DEL CENSO (hoja)»). Un motivo REGISTRADO dice su fuente: «… (registrado en la app)» si lo eligió una persona; desde el 25 nov 2026 «… (censo: sección ALTAS)» o «… (censo: sección DEFUNCIONES)» si el script del censo lo tomó de esa sección de la hoja. Los dos cuentan igual para la mortalidad (son motivo registrado, no inferido).');
   add(E, 'Excluir (duplicado)', '0/1', '', '1 = tarjeta duplicada (no es otro episodio): excluir. Vacío = borrado en la base por mantenimiento: revisar. 0 = episodio real.');
   add(E, 'Diagnóstico', 'texto', '', 'Diagnóstico del censo en la última parte del episodio (texto libre, sin codificar).');
   add(E, 'Dx principal · CIE-10 (grupo) · Dx principal (fuente)', 'texto', '', 'Diagnóstico principal de una lista corta del servicio (apendicitis, colecistitis, pancreatitis, oclusión, hernia, cáncer colorrectal…) con su grupo CIE-10. Fuente: «Elegido en la app» (alguien eligió otro en 🩺 Dx principal, bajo la caja DX) o «Inferido del DX» (el que la app muestra sola desde el 30 oct 2026: la misma tabla sobre el texto del DX del censo, el término que aparece primero). Para publicar, revisar una muestra de los inferidos.');
@@ -4286,14 +4679,14 @@ function regVariables_() {
   add(R, 'Pacientes operados (n) · Cirugías (n)', 'entero', '', 'Cirugías del mes (de la caja y las inferidas; no la programación sin confirmar) y cuántos episodios distintos. Desde el 24 nov 2026 incluye las cirugías sin fecha, contadas en el mes del ingreso del episodio (ver «Cirugías sin fecha exacta (n)»); antes se perdían.');
   add(R, 'Cirugías sin fecha exacta (n)', 'entero', '', 'Cuántas de las «Cirugías (n)» del mes no tienen fecha y se pusieron en el mes del ingreso de su episodio (o del egreso si no hay ingreso). Sesgo: una estancia que cruza de mes puede dejarlas en el mes equivocado; sin ingreso ni egreso no se cuentan.');
   add(R, 'Reintervenciones no planeadas (n)', 'entero', '', 'Egresos del mes con «Reintervención no planeada (probable)» = 1. Mismo sesgo que esa columna (texto libre, solo este episodio).');
-  add(R, 'Ingresos sin talla (n)', 'entero', '', 'Ingresos del mes sin talla registrada (sin ella no hay IMC). Es solo cobertura: desde el 24 nov 2026 la talla ya no se pide paciente por paciente en «Por completar».');
+  add(R, 'Ingresos sin talla (n)', 'entero', '', 'Ya no se mide (25 nov 2026): la talla no se registra en este servicio. La columna se queda vacía en su lugar (quitarla movería las demás). El IMC se sigue calculando si alguna vez hay talla.');
   add(R, 'Cirugías de urgencia (%) · Abordaje laparoscópico (%)', 'número', '%', 'Sobre las cirugías del mes que tienen el dato (urgencia/electiva; abordaje). Laparoscópico incluye las convertidas.');
   add(R, 'Conversiones (n) · Complicación mayor (Clavien ≥ IIIa) (n)', 'entero', '', 'Cirugías del mes convertidas de laparoscópica a abierta y con Clavien-Dindo ≥ IIIa.');
   add(R, 'Reintervenciones (n)', 'entero', '', 'Egresos del mes con «Reintervención» = 1.');
   add(R, 'Reingresos a 30 días (n) · Reingreso a 30 días (%)', 'entero · número', '%', 'Egresos del mes que reingresaron en 30 días, sobre los que ya tienen el dato (0/1).');
   add(R, 'Cultivos positivos (n) · Gérmenes (más frecuentes)', 'entero · texto', '', 'Cultivos de WinLab de pacientes del servicio tomados en el mes; los 5 gérmenes más frecuentes con su número.');
   add(R, 'Dx principales (más frecuentes) · Cirugías por grupo (más frecuentes)', 'texto', '', 'Los 5 más frecuentes del mes con su número (dx principal de los ingresos; grupo de las cirugías).');
-  add(R, 'Ingresos con datos incompletos (n)', 'entero', '', 'Ingresos del mes a los que les falta algo de «Por completar» (motivo, sexo, edad, APP, peso, dx principal o cirugías). Desde el 24 nov 2026 ya no cuenta la talla: la cifra baja respecto a las corridas anteriores.');
+  add(R, 'Ingresos con datos incompletos (n)', 'entero', '', 'Ingresos del mes a los que les falta algo de «Por completar» (motivo, sexo, edad, APP, peso, dx principal o cirugías). Desde el 24 nov 2026 ya no cuenta la talla y desde el 25 nov 2026 el sexo inferido del nombre cuenta como sexo: la cifra baja respecto a las corridas anteriores.');
   add(PC, 'Privacidad', '', '', 'TIENE NOMBRES: es la lista de trabajo del equipo para completar las tarjetas. No se comparte ni se descarga para estudios.');
   add(PC, 'ID episodio', 'texto', '', 'Id del paciente en la base (no es seudónimo): el de la tarjeta en la app.');
   add(PC, 'Estado · Cama · Nombre · Expediente · Fecha de ingreso · Fecha de egreso', 'texto', '', 'Del censo y de la Papelera (la última parte del episodio). Entran los hospitalizados, los egresados de los últimos 30 días y, desde el 24 nov 2026, TODO egresado sin motivo del egreso sin importar la fecha (van primero entre las filas nuevas, el egreso más reciente arriba).');
@@ -4411,7 +4804,7 @@ function regVariables_() {
   add('Cirugías', 'Fotos (n) · Foto subida por · Foto subida el', 'entero · texto', '', 'Cuántas fotos tiene la cirugía en la app, y quién y cuándo subió la más reciente. No se copian las imágenes ni sus rutas. Vacío en las inferidas. Sesgo: una foto borrada en la app deja de contarse.');
   // 24 nov 2026 (lote C, 2.ª parte): columnas de apoyo, eventos adversos, antibióticos por curso, completitud, flujo e indicadores.
   var EV = REG_AN_EVENTOS, AB = REG_AN_ATB, CO = REG_AN_COMPLETITUD, FL = REG_AN_FLUJO, IN = REG_AN_INDICADORES;
-  add(E, 'Tipo de egreso (probable) · Fuente del tipo', 'texto', '', 'SOLO en el egresado sin motivo registrado (Defunción vacía): «Alta», «Alta voluntaria» o «Traslado» si un renglón de guardia, cronología o pendientes lo dice (ALTA A DOMICILIO, PREALTA, TRASLADO A OTRO HOSPITAL…) sin negación ni condición: no cuentan «ALTA SI TOLERA…», «PROBABLE ALTA MAÑANA», el alta de un interconsultante («ALTA POR MEJORIA DE NEFROLOGIA»), el traslado dentro del hospital («TRASLADO A UNIDAD DE CUIDADOS INTENSIVOS») ni «DOLOR QUE SE REFIERE A…»; si no, «Volvió al censo» cuando la misma persona tiene un episodio posterior (egresó viva), o «Sigue en el hospital» si WinLab (sin los reportes de consulta externa o urgencias: un laboratorio de control posalta no es hospitalización) o el RIS traen estudios de 1 a 30 días después del egreso (el RIS no dice la procedencia: un estudio ambulatorio también da este valor). «Fuente del tipo» dice de dónde salió. NUNCA alimenta «Defunción» ni «Tipo de egreso»: si algún renglón habla de una defunción queda vacío. Sesgo: una PREALTA escrita días antes no prueba que el paciente se fue de alta; es una pista para completar el motivo en la app, no un desenlace.');
+  add(E, 'Tipo de egreso (probable) · Fuente del tipo', 'texto', '', 'SOLO en el egresado sin motivo registrado (Defunción vacía): «Alta», «Alta voluntaria» o «Traslado» si un renglón de guardia, cronología o pendientes lo dice (ALTA A DOMICILIO, PREALTA, TRASLADO A OTRO HOSPITAL…) sin negación ni condición: no cuentan «ALTA SI TOLERA…», «PROBABLE ALTA MAÑANA», el alta de un interconsultante («ALTA POR MEJORIA DE NEFROLOGIA»), el traslado dentro del hospital («TRASLADO A UNIDAD DE CUIDADOS INTENSIVOS») ni «DOLOR QUE SE REFIERE A…»; si no, «Volvió al censo» cuando la misma persona tiene un episodio posterior (egresó viva), o «Sigue en el hospital» si WinLab (sin los reportes de consulta externa o urgencias: un laboratorio de control posalta no es hospitalización) o el RIS traen estudios de 1 a 30 días después del egreso (el RIS no dice la procedencia: un estudio ambulatorio también da este valor). «Fuente del tipo» dice de dónde salió. NUNCA alimenta «Defunción» ni «Tipo de egreso»: si algún renglón habla de una defunción queda vacío. Sesgo: una PREALTA escrita días antes no prueba que el paciente se fue de alta; es una pista para completar el motivo en la app, no un desenlace. Desde el 25 nov 2026 «Fuente del tipo» también dice «Censo (hoja): sección ALTAS» o «Censo (hoja): sección DEFUNCIONES» cuando el motivo REGISTRADO («Tipo de egreso») lo tomó el script del censo de esa sección (ahí «Tipo de egreso (probable)» queda vacío: el motivo ya está registrado).');
   add(E, 'Desenlace conocido', '0/1', '', '1 = egreso con motivo registrado (Defunción = 0 o 1); 0 = egreso sin motivo; vacío = sigue hospitalizado, sin egreso registrado o tarjeta duplicada. Sesgo: si las defunciones se registran más que las altas, la mortalidad sobre «desenlace conocido» sobreestima (ver los dos indicadores de mortalidad en «' + IN + '»).');
   add(E, 'Días al reingreso · Dx principal del reingreso', 'entero · texto', 'días', 'Días del egreso al ingreso del episodio SIGUIENTE de la misma persona (cualquier plazo, no solo 30 días) y el dx principal de ese episodio. Vacío si no hay episodio siguiente, si falleció o si las fechas se traslapan. Sesgo: solo ve reingresos a ESTE servicio; depende de que el expediente esté bien capturado.');
   add(E, 'Reingreso planeado (probable) · Reingreso no planeado a 30 días · Reingreso con cirugía', '0/1', '', 'Planeado = 1 si alguna cláusula del diagnóstico, el padecimiento o los procedimientos del episodio siguiente dice a qué venía (cierre de ileostomía / colostomía, restitución del tránsito, segundo tiempo, cirugía programada, quimioterapia, retiro de catéter…) o su primera cirugía se eligió «Electiva»; vacío sin episodio siguiente. NO cuenta la cláusula que solo NOMBRA lo previo («PO CIERRE DE ILEOSTOMIA», «POSTERIOR A QUIMIOTERAPIA») o lo niega («NO PROGRAMADO PARA…»), y si el DIAGNÓSTICO del reingreso trae una complicación (fuga, sepsis, absceso, dehiscencia, oclusión, sangrado, infección, neutropenia…) es 0 aunque nombre la cirugía: los reingresos por complicación siempre citan la cirugía previa. No planeado a 30 días = «Reingreso a 30 días» = 1 y no planeado (0 si no reingresó o fue planeado; vacío si «Reingreso a 30 días» está vacío). Con cirugía = el reingreso de ≤30 días tuvo alguna cirugía. Sesgo: «planeado» sale de palabras del texto libre: un reingreso programado que no lo dice cuenta como no planeado.');
@@ -4437,14 +4830,31 @@ function regVariables_() {
   add(AB, 'Días desde la última cirugía', 'entero', 'días', 'Días de la cirugía más reciente del episodio (anterior o del mismo día) al inicio del curso; vacío si no hay.');
   add(AB, 'Fuente', 'texto', '', '«Casilla» (casilla de antibiótico prendida y el texto lo nombra), «Texto de manejo» (detectado en la caja Manejo) y / o «Historial» (del historial de auditoría, solo en noches sin foto).');
   add(CO, 'Mes de ingreso · Variable', 'texto', '', 'Mes de ingreso del episodio (AAAA-MM) o «Acumulado» (todos, también los que no tienen fecha de ingreso). Variable: el dato que se mide. Las de «Cirugía con …» cuentan cirugías, no episodios, y van al mes de ingreso de su episodio.');
-  add(CO, 'Con dato (n) · Aplicables (n) · Completitud (%)', 'entero · entero · número', '%', 'Episodios (o cirugías) no duplicados que tienen el dato ÷ aquellos a los que aplica (p. ej. el tipo de egreso solo aplica a egresados; la tromboprofilaxis, a operados). Sesgo: mide si el dato ESTÁ, no si es correcto.');
+  add(CO, 'Con dato (n) · Aplicables (n) · Completitud (%)', 'entero · entero · número', '%', 'Episodios (o cirugías) no duplicados que tienen el dato ÷ aquellos a los que aplica (p. ej. el tipo de egreso solo aplica a egresados; la tromboprofilaxis, a operados). Sesgo: mide si el dato ESTÁ, no si es correcto. Desde el 25 nov 2026: «Sexo (inferido del nombre)» se cuenta aparte (no se mezcla con «Sexo (escrito en la tarjeta)»; «Sexo (cualquier fuente)» incluye las tres) y «Talla» ya no se mide (la talla no se registra en este servicio; las filas de «Talla» de corridas anteriores quedan con Vigente: No).');
   add(FL, 'Orden · Paso · Episodios (n)', 'entero · texto · entero', '', 'Diagrama de flujo de la cohorte (tipo STROBE): de todos los episodios del registro se restan, en orden, duplicados, borrados o «no fue egreso», no egresados y egresados sin desenlace conocido; cada episodio sale en el PRIMER paso que le toca. «= Episodios analizables» es el MISMO conjunto de «' + IN + '»: es el denominador de «Mortalidad hospitalaria (desenlace conocido)» en «Acumulado». Después, cuántos de los analizables están operados, tienen laboratorio seriado o no tienen fecha de ingreso (cuentan para mortalidad, no tienen estancia), y lo que el robot vio sin episodio (cultivos y expedientes de WinLab).');
   add(IN, 'Periodo · Estrato', 'texto', '', 'Periodo: mes (AAAA-MM), trimestre (AAAA-T1…T4) o «Acumulado»; los indicadores por episodio van al mes de EGRESO, los de cirugía al de la cirugía. Estrato: Todos, Urgencia o Electiva (tipo elegido en la caja), «Dx: …» (dx principal) o «Cirugía: …» (grupo). Para no gastar celdas, el mes solo lleva «Todos»; el trimestre agrega Urgencia y Electiva; «Acumulado» agrega Dx y grupo cuando tienen ' + REG_INDICADOR_MIN + ' o más.');
   add(IN, 'Indicador · Definición', 'texto', '', 'Nombre y definición operativa (numerador ÷ denominador y su sesgo). Universo: egresos observados que no son tarjetas duplicadas ni borrados en la base (el mismo de «' + FL + '»). Indicadores: ' + REG_INDICADORES.map(function (x) { return x.n; }).join('; ') + '.');
   add(IN, 'Numerador · Denominador · Excluidos por dato faltante (n)', 'entero', '', 'Casos con el evento y casos con el dato. «Excluidos» = casos del universo a los que les falta el dato (no entran al denominador): si son muchos, la tasa no representa al servicio. En las medianas el numerador va vacío; en las razones son sumas de días.');
   add(IN, 'Tasa (%) · IC95 inferior · IC95 superior', 'número', '%', 'Numerador ÷ denominador × 100 e intervalo de confianza de 95 % de Wilson (sin corrección de continuidad). VACÍOS si el denominador es menor de ' + REG_INDICADOR_MIN + ' (se dejan n y N). Solo en proporciones.');
   add(IN, 'Valor · Unidad', 'número · texto', '', 'Para lo que no es una proporción: la mediana (días) o la razón (días de antibiótico por 100 días-paciente; % de días Watch o Reserve). Vacío con menos de ' + REG_INDICADOR_MIN + ' casos. Unidad dice cómo leerlo («%» en las proporciones).');
-  add(REG_AN_RESUMEN, 'Egresos con motivo (%) · Con sexo (%) · Episodios sin labs (n)', 'número · número · entero', '', 'Desde el 24 nov 2026: egresos del mes con motivo registrado ÷ egresos; ingresos del mes con sexo (de la tarjeta o de WinLab) ÷ ingresos; ingresos del mes sin ninguna fecha de laboratorio. Sesgo: miden llenado, no calidad del dato.');
+  add(REG_AN_RESUMEN, 'Egresos con motivo (%) · Con sexo (%) · Episodios sin labs (n)', 'número · número · entero', '', 'Desde el 24 nov 2026: egresos del mes con motivo registrado ÷ egresos; ingresos del mes con sexo (de la tarjeta, de WinLab o, desde el 25 nov 2026, inferido del nombre) ÷ ingresos; ingresos del mes sin ninguna fecha de laboratorio. Sesgo: miden llenado, no calidad del dato.');
+  // 25 nov 2026 (registro 2026.11.26.2): procedimientos del censo y seguimiento de operados.
+  var PCZ = REG_PROC_CENSO, SG = REG_SEGUIMIENTO, desdeProc = 'Solo hay datos desde el 25 nov 2026: Google no guarda los censos viejos (la hoja del censo se reescribe cada día y la sección PROCEDIMIENTOS de días anteriores no se puede recuperar).';
+  add(REG_AN_RESUMEN, 'Procedimientos en el censo (n) · Procedimientos en el censo de CG (n) · Ambulatorios (n)', 'entero', '', 'Filas de «' + PCZ + '» con fecha en el mes (una por fecha + expediente + nombre: el mismo paciente listado dos días cuenta dos veces); las de especialidad CG (Cirugía General, también en combinación «CG/URO»); las ambulatorias (cama EXT o sin episodio del registro que cubra la fecha). VACÍAS antes de noviembre de 2026 (no hay dato, no es cero). Sesgo: ' + desdeProc + ' Noviembre de 2026 es un mes incompleto. Lo que el equipo no anotó en la sección no se cuenta.');
+  add(PCZ, 'Privacidad', '', '', 'TIENE NOMBRES Y EXPEDIENTES: copia fiel de la sección PROCEDIMIENTOS de la hoja del censo (tabla censo_procedimientos, la escribe el script del censo). No es una pestaña de análisis: no compartir.');
+  add(PCZ, 'ID · Fecha · Cama · Expediente · Nombre · Edad · Diagnóstico · Especialidad · Adscrito · Residente', 'texto', '', 'Una fila por fecha del censo + expediente + nombre (el mismo expediente con dos nombres son dos filas). Fecha = la del censo (celda A2 de la hoja; si no se entiende, el día en que se leyó). Cama tal cual: «3-152», «EXT» (ambulatorio), «QX», «UCIP». ' + desdeProc);
+  add(PCZ, 'Visto primero · Visto por última vez', 'texto (fecha y hora UTC)', '', 'Primera y última vez que el script del censo vio la fila en la hoja (cada 5 min; «última vez» se actualiza como mucho cada hora mientras siga igual). El script del censo reescribe juntas todas las filas que siguen en la hoja ese día (misma «última vez»); si la hoja se corrige o se quita una fila, la vieja se queda con su «última vez» y sale «Vigente: No».');
+  add(PCZ, 'ID episodio · Ambulatorio · Grupo · Vigente', 'texto', '', 'ID episodio: el de «Pacientes» con el mismo expediente y nombre compatible cuya estancia (ingreso → egreso, o hasta hoy si sigue hospitalizado) cubre la fecha; vacío si no hay (se recalcula cada noche: un episodio que aparece después también se liga). Desde el 25 nov 2026 (revisión), con cama que no es EXT (QX, UCIP, piso) y sin estancia que cubra la fecha, también el episodio que ingresó al día siguiente (cirugía de urgencias la víspera del ingreso al servicio). Ambulatorio: «Sí» si la cama es EXT o no hay episodio; VACÍO (no se sabe) si el expediente no es válido para el registro (menos de 4 dígitos) y la cama no es EXT: no cuenta en «Ambulatorios (n)». Grupo: grupo quirúrgico que se reconoce en el DIAGNÓSTICO (la sección no trae el procedimiento: muchas filas quedan sin grupo). Vigente: «No» si su «Visto por última vez» es anterior (más de 1 min) al más reciente de las filas de su misma fecha: salió de la hoja ese día (se corrigió el nombre o el expediente, o se canceló). La tabla no borra filas; las «No» no cuentan en el Resumen mensual ni en «' + SG + '». Sesgo: si el equipo quita de la sección a un operado real antes de que cambie la fecha del censo, también queda «No».');
+  add(SG, 'Privacidad', '', '', 'TIENE NOMBRES Y EXPEDIENTES: lista de trabajo para dar seguimiento a los operados, como «Por completar». No se comparte ni se descarga para estudios. ' + desdeProc);
+  add(SG, 'Expediente · Nombre · Edad', 'texto', '', 'Una fila por persona (expediente válido + nombre compatible, la misma regla de identidad que el resto del registro) que aparece en «' + PCZ + '» o tiene cirugías en el registro (de la caja y las inferidas; no la programación sin confirmar ni las tarjetas duplicadas). Nombre: el PRIMERO que se vio de la persona (episodio por fecha de ingreso o procedimiento por fecha), en mayúsculas, sin acentos ni espacios dobles: es parte de la clave de la fila y no cambia porque la tarjeta y el censo lo escriban distinto. Edad: la del registro más reciente (procedimiento del censo o episodio). Expediente: si el del censo no es válido para el registro (menos de 4 dígitos), va tal cual y la persona se identifica por ese texto y el nombre.');
+  add(SG, 'Nombre más reciente', 'texto', '', 'El nombre tal como lo escribe el registro más reciente de la persona (procedimiento del censo o episodio), con acentos. Desde el 25 nov 2026 (revisión).');
+  add(SG, 'Sexo · Sexo (fuente)', 'texto', '', 'El del episodio más reciente que lo tenga, con su fuente («Tarjeta», «de WinLab», «Inferido del nombre»); sin episodio: el de WinLab o, si no, el inferido del nombre.');
+  add(SG, 'Primer procedimiento · Último procedimiento', 'texto AAAA-MM-DD', '', 'Fechas de los procedimientos del censo y de las cirugías con fecha del registro de la persona. Las cirugías sin fecha no cuentan aquí (sí en «Cirugías registradas (n)»).');
+  add(SG, 'Procedimientos en el censo (n) · Cirugías registradas (n)', 'entero', '', 'Días distintos en que la persona aparece en la sección PROCEDIMIENTOS del censo; cirugías de sus episodios en el registro (caja Cirugías y las inferidas de otras cajas). Sesgo: un mismo procedimiento puede estar en las dos cuentas.');
+  add(SG, 'Especialidades · Diagnóstico más reciente', 'texto', '', 'Especialidades del censo y de sus episodios (mayúsculas, sin acentos, sin repetir); el diagnóstico del registro más reciente.');
+  add(SG, 'ID episodios · ¿Hospitalizado ahora? · Último egreso · Motivo del último egreso', 'texto', '', 'Ids de base de sus episodios en «Pacientes» (de la más vieja a la más nueva); «Sí» si alguno sigue en el censo; fecha y tipo del egreso más reciente (como «Tipo de egreso» de «' + E + '»: «Motivo no registrado» si nadie lo clasificó).');
+  add(SG, 'Días desde el último procedimiento · Reingresos posteriores (n)', 'entero', 'días', 'Días del último procedimiento a la fecha de la corrida, solo durante los primeros ' + REG_SEGUIMIENTO_DIAS_MAX + ' días (después queda vacío: la fecha sigue en «Último procedimiento»); episodios de la persona que ingresaron DESPUÉS del primer procedimiento, sin el episodio que contiene ese procedimiento (cirugía o procedimiento del censo ligado a él, también la cirugía de urgencias la víspera del ingreso). Sesgo: solo se ven los reingresos a este servicio.');
+  add(SG, 'Vigente', 'texto', '', 'Sí: la persona sigue saliendo así hoy. Se ordena por último procedimiento (el más reciente arriba); las filas que ya estaban conservan su renglón.');
   add(REG_WL_LABS, 'Nacimiento en WinLab', 'texto DD/MM/AAAA', '', 'Fecha de nacimiento del encabezado del reporte (24 nov 2026). Es un dato identificable de una pestaña con nombres: no compartir. Solo se llena en los reportes que el registro leyó desde esa fecha (los nuevos y los que se vuelven a capturar): el encabezado SÍ está en la base para los anteriores, pero WinLab no se releyó completo para tomarlo. De aquí sale «Edad al ingreso (calculada)».');
   // Lo que toda lectura de estas pestañas debe tener presente, y lo que esta fuente NO tiene (hay que capturarlo en la app).
   var SL = 'Sesgos y limitaciones', ND = 'No disponible en esta fuente';
@@ -4602,7 +5012,7 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Vigente', 'Sí: está en la tarjeta en la última copia. No: estuvo y ya no (corregido, borrado o movido); se conserva.'],
     ['Signos vitales y Notas de evolución', 'La app guarda 14 días de signos y 10 notas; aquí se acumulan todos.'],
     ['Labs del robot (WinLab)', 'Un renglón por reporte de WinLab del paciente, con la regla de identidad del robot: lo que el robot marcó (nombre, alias, edad, homónimos) o, en capturas anteriores al 9 oct 2026, esa misma regla aplicada aquí; nunca de homónimos (si no se puede decidir, no se copia). Valores: un renglón por estudio «ESTUDIO: valor unidad (ref. …)». Toma y Resultado: fecha y hora del reporte. Sexo en WinLab: F o M del encabezado del paciente.'],
-    ['Sexo (fuente)', 'En Pacientes: «Tarjeta» si el sexo lo escribió la app; «de WinLab» si la tarjeta no lo tenía y se tomó del encabezado de WinLab del paciente (mismo expediente y nombre compatible). Si WinLab trae los dos sexos para la persona, no se usa.'],
+    ['Sexo (fuente)', 'En Pacientes: «Tarjeta» si el sexo lo escribió la app; «de WinLab» si la tarjeta no lo tenía y se tomó del encabezado de WinLab del paciente (mismo expediente y nombre compatible). Si WinLab trae los dos sexos para la persona, no se usa. «Inferido del nombre» (25 nov 2026): ni la tarjeta ni WinLab lo traen y se tomó del primer nombre de pila (diccionario de nombres frecuentes; si no es concluyente queda vacío).'],
     ['Cultivos del robot (WinLab)', 'Un renglón por muestra de cultivo de esos reportes: del PDF del reporte cuando el robot lo leyó (germen y antibiograma S/I/R) o de la tabla del reporte.'],
     ['Imagen del robot (RIS)', 'Lo que capturó el robot de RIS, por expediente y episodio.'],
     ['Nota / Checklist completo (JSON)', 'Todo lo demás de la tarjeta, sin archivos incrustados. Si la nota no cabe en una celda sigue en «Nota completa (JSON) · 2».'],
@@ -4612,6 +5022,8 @@ function regEscribirDiccionario_(hoja, hoy, cuentas, celdas, pendiente, avisos) 
     ['Dispositivos y Drenajes · diario', 'Un renglón por drenaje, sonda o estoma de la tarjeta, con la primera y la última noche en que se vio (Vigente: No = retirado, fecha aproximada); y el gasto de cada drenaje por noche.'],
     ['Movimientos y estado', 'Del historial de auditoría de la base: alta y baja del censo y cambios de cama, sección, estado y especialidad. Sin nombres; un valor raro se escribe «valor no válido».'],
     ['Soporte y exposiciones (historial) y Actividad por episodio y día', 'Del historial de auditoría de las notas: cuándo se prendió o apagó antibiótico, ayuno, NPT, ventilación, vasopresor y tromboprofilaxis (quién = seudónimo), y cuántas ediciones tuvo cada nota por día. Sus columnas están en «Diccionario de variables».'],
+    ['Procedimientos del censo', 'La sección PROCEDIMIENTOS de la hoja del censo (cirugías y procedimientos del día, también los ambulatorios: cama EXT), una fila por fecha + expediente + nombre, con el episodio del registro que cubre la fecha si lo hay. Solo hay datos desde el 25 nov 2026: Google no guarda los censos viejos.'],
+    ['Seguimiento de operados', 'Lista de trabajo CON NOMBRES (como «Por completar»): una fila por persona con procedimientos en el censo o cirugías en el registro, con sus fechas, sus episodios, si sigue hospitalizada, su último egreso y sus reingresos posteriores. El más reciente arriba. Sus columnas están en «Diccionario de variables».'],
     ['Fuente (Pacientes)', '«Papelera (borrado)»: la copia se borró de la Papelera y se recuperó de lo que la base guarda de los borrados.'],
     ['Pestañas «Análisis · …»', 'Versión para estadística de todo lo anterior, recalculada cada noche: sin nombres ni expedientes (ID seudónimo), números como números, fechas AAAA-MM-DD, una fila por episodio / por día de labs / por día de signos / por cultivo. Cada columna está definida en «Diccionario de variables». Lo que no se pudo tomar como dato queda vacío y explicado. Una hospitalización restaurada desde la Papelera es UN episodio.'],
     ['Eventos adversos, Análisis · Antibióticos, Completitud, Flujo de la cohorte e Indicadores de calidad', 'Pestañas de análisis sin nombres ni expedientes (24 nov 2026): un renglón por evento adverso detectado (con la columna «Revisado» para quien valida: el registro no la pisa), un renglón por curso de antibiótico, el llenado de cada dato por mes, el diagrama de flujo de la cohorte y los indicadores con numerador, denominador e intervalo de confianza de 95 %. Cada columna está en «Diccionario de variables», que también tiene «Sesgos y limitaciones» y «No disponible en esta fuente».'],

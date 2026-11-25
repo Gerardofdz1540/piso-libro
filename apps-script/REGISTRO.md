@@ -20,7 +20,7 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 
 | Pestaña | Una fila por… | Contenido |
 |---|---|---|
-| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla**; **Dx principal**, su grupo CIE-10 y su fuente (28 oct 2026).<br>**Sexo (fuente)**: «Tarjeta» o «de WinLab» (29 oct 2026). |
+| Pacientes | hospitalización (episodio) | **Censo:** nombre, expediente, edad, sexo, especialidad, adscrito, residente, cama.<br>**Estancia:** ingreso, egreso y motivo, días de estancia, dx, estado.<br>**Cajas:** APP, PA, manejo, pendientes, drenajes y dispositivos, antibiótico, cultivos, interconsultas, dieta y NPO, TVP, NPT, ventilación, vasopresores.<br>**Resúmenes:** cirugías, imagen, labs, Guardia vigente, Cronología.<br>**Respaldo:** nota y checklist completos en JSON, sin archivos.<br>**Peso y talla**; **Dx principal**, su grupo CIE-10 y su fuente (28 oct 2026).<br>**Sexo (fuente)**: «Tarjeta» o «de WinLab» (29 oct 2026) o «Inferido del nombre» (25 nov 2026). |
 | Cirugías | cirugía | fecha, procedimiento, hallazgos, sangrado, cirujano, **Grupo**, **Fuente** · **Vigente** · **Tipo** (urgencia/electiva), **Abordaje**, **Clavien-Dindo**, **Complicación**. Desde el 28 oct 2026 también las que no están en la caja: fecha POP, texto Qx anterior, Cronología, DX y programación del día (ver abajo). Desde el 24 nov 2026, al final: **ID cirugía** (el de la caja; vacío en las inferidas), **Fotos (n)**, **Foto subida por** y **Foto subida el** (la última; nunca la imagen ni su ruta) |
 | Labs | fecha y estudio | valor como está en la tarjeta · **Vigente** · **Corregido a mano** (quién, cuándo y qué decía antes) |
 | Imagen | estudio | fecha, tipo, descripción, enlace (solo http) · **Vigente** |
@@ -28,6 +28,7 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Notas de evolución | nota | fecha y hora, autor, con IA o no, texto. La app guarda 10; aquí se acumulan. |
 | Guardia y cronología | renglón | Cronología (de la nota y del respaldo de la base) y Guardia vigente · **Vigente** |
 | Procedimientos programados | procedimiento | la lista del día de la app |
+| Procedimientos del censo | fecha + expediente + nombre | **con nombres** (25 nov 2026, registro 2026.11.26.2): la sección PROCEDIMIENTOS de la hoja del censo (tabla `censo_procedimientos`): cama («EXT» = ambulatorio, «QX», «UCIP»), expediente, nombre, edad, diagnóstico, especialidad, adscrito, residente, visto primero / por última vez, **ID episodio** (el del registro que cubre la fecha), **Ambulatorio**, **Grupo** (del diagnóstico) · **Vigente**. Solo desde el 25 nov 2026. |
 | Labs del robot (WinLab) | reporte de WinLab del paciente | folio, toma, resultado, servicio y **valores** (un renglón por estudio: «ESTUDIO: valor unidad (ref. …)»), aunque no hayan llegado a la tarjeta · **Atribución** · **Sexo en WinLab** (F/M del encabezado) · **Nacimiento en WinLab** (24 nov 2026, al final; solo en reportes capturados desde esa fecha) |
 | Cultivos del robot (WinLab) | muestra de cultivo de esos reportes | tipo, muestra, resultado, germen, antibiograma S/I/R, UFC, texto del reporte (del PDF cuando el robot lo leyó; si no, de la tabla) |
 | Imagen del robot (RIS) | estudio | modalidad, estudios, crítico, reporte, enlace (con su episodio) |
@@ -52,8 +53,9 @@ Supabase ──GET, 1 vez al día──► Apps Script (proyecto aparte) ──�
 | Análisis · Signos vitales | episodio y día | números limpios; TA en sistólica, diastólica y PAM; horas de uresis e índice urinario (mL/kg/h) |
 | Análisis · Cultivos | muestra | toma, tipo, resultado (0/1), germen, antibiograma. Desde el 24 nov 2026, al final: **Sitio (grupo)**, días desde la última cirugía, posoperatorio (1-30 d), multirresistente (probable) y contaminante probable |
 | Diccionario de variables | variable | definición, tipo y unidad de cada columna de análisis (codebook) |
-| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente. Desde el 24 nov 2026: cirugías sin fecha exacta, reintervenciones no planeadas, ingresos sin talla, **egresos con motivo (%)**, **con sexo (%)** y episodios sin labs |
-| Por completar | episodio | **con nombres** (no se comparte): hospitalizados, egresados de los últimos 30 días y (24 nov 2026) todo egresado sin motivo del egreso, con lo que le falta a cada tarjeta (ya no pide la talla) |
+| Resumen mensual | mes | solo cuentas: ingresos, egresos, mortalidad sobre desenlace conocido, estancia, cirugías, urgencias, laparoscopía, conversiones, Clavien ≥ IIIa, reintervenciones, reingresos, cultivos y lo más frecuente. Desde el 24 nov 2026: cirugías sin fecha exacta, reintervenciones no planeadas, ingresos sin talla (vacía desde el 25 nov 2026: ya no se mide), **egresos con motivo (%)**, **con sexo (%)** y episodios sin labs. Desde el 25 nov 2026, al final: **procedimientos en el censo (n)**, **… de CG (n)** y **ambulatorios (n)** por mes de la fecha (vacías antes de noviembre de 2026) |
+| Por completar | episodio | **con nombres** (no se comparte): hospitalizados, egresados de los últimos 30 días y (24 nov 2026) todo egresado sin motivo del egreso, con lo que le falta a cada tarjeta (ya no pide la talla ni el sexo inferido del nombre) |
+| Seguimiento de operados | persona (expediente + nombre compatible) | **con nombres** (no se comparte; lista de trabajo, 25 nov 2026): quien aparece en «Procedimientos del censo» o tiene cirugías en el registro: edad, sexo y su fuente, primer y último procedimiento, procedimientos en el censo (n), cirugías registradas (n), especialidades, diagnóstico más reciente, ID episodios, ¿hospitalizado ahora?, último egreso y su motivo, días desde el último procedimiento, reingresos posteriores (n). El más reciente arriba. |
 
 - **Episodio:** el id del paciente en la base. Un reingreso crea otro id y por lo tanto otro episodio.
 - **WinLab:** cada fila de `winlab_labs` trae todos los reportes de la búsqueda por apellido (también de homónimos) y se
@@ -116,6 +118,12 @@ siempre. Cada columna está definida en «Diccionario de variables».
     (`_egreso_tipo`, con quién y cuándo).
   - El registro lo toma aunque la copia sea vieja: relee cada noche las copias clasificadas desde la corrida anterior.
     Ese motivo manda sobre cualquier etiqueta y aparece como «… (registrado en la app)».
+  - Desde el 25 nov 2026 el script del censo también registra el motivo cuando el paciente aparece en la sección
+    **ALTAS** o **DEFUNCIONES** de la hoja del censo (`_egreso_tipo_por` = «Censo (hoja · ALTAS)» / «Censo (hoja ·
+    DEFUNCIONES)»). Aparece como «… (censo: sección ALTAS)» o «… (censo: sección DEFUNCIONES)», manda igual que el de la
+    app (es un motivo registrado, no inferido: cuenta para la mortalidad) y «Fuente del tipo» de «Análisis · Episodios»
+    lo dice («Censo (hoja): sección ALTAS / DEFUNCIONES»). La sección no cambia el tipo: una contrarreferencia anotada
+    en DEFUNCIONES sigue siendo contrarreferencia.
 - **Reingresos.**
   - «Es reingreso (≤30 días)» mira hacia atrás.
   - «Reingreso a 30 días» mira hacia adelante: queda vacío si sigue hospitalizado, si murió o si aún no pasan 30 días.
@@ -152,6 +160,60 @@ siempre. Cada columna está definida en «Diccionario de variables».
   - «Por completar» deja de pedir el sexo que llegó de WinLab.
   - Para llenar a los pacientes de antes, la primera corrida de esta versión vuelve a leer WinLab completo **una sola
     vez** (marca `REG_WL_RELECTURA`; unas 4 vueltas de 10 min) y avisa en el Diccionario.
+- **Sexo inferido del nombre** (25 nov 2026, registro 2026.11.26). Tercera fuente, la de menor prioridad: solo si ni la
+  tarjeta ni WinLab traen el sexo. Se marca **«Inferido del nombre»** en «Sexo (fuente)» (`regSexoDeNombre`):
+  - Diccionario de cientos de nombres de pila frecuentes en México (hombres y mujeres). «MA.», «MA», «Ma.» = María.
+    Inicial suelta («J.»), nombre fuera de la lista o sin nombre (DESCONOCIDO, RN…): vacío. **Nunca se adivina por la
+    terminación.**
+  - El primer nombre de pila manda (JOSÉ MARÍA = M, MARÍA JOSÉ = F, MA. GUADALUPE = F). Si es ambiguo (GUADALUPE,
+    ROSARIO, TRINIDAD, REFUGIO, CRUZ…) decide el segundo; si sigue ambiguo, vacío.
+  - Si el nombre viene con APELLIDOS primero (el formato del censo), se saltan los apellidos frecuentes (lista corta)
+    que no son nombre de pila y los apellidos con partícula (DE LEÓN, DE LA ROSA, DE LOS SANTOS, DE JESÚS), salvo justo
+    después de MARÍA, JOSÉ o JUAN («MARÍA DE JESÚS», «JUAN DE LA CRUZ»), donde son parte del nombre.
+  - Si después del nombre elegido aparece un nombre de pila del **otro sexo**, el orden no es claro (SANTIAGO, LEÓN,
+    SANTOS, MARTÍN, SALVADOR… también son apellidos): vacío, con los apellidos primero o con el nombre primero. Única
+    excepción: el compuesto MARÍA JOSÉ / JOSÉ MARÍA, donde manda el primero.
+  - Una inicial después de los apellidos solo se salta con UN apellido antes («PÉREZ N JUAN») y si lo que sigue no es
+    MARÍA, JOSÉ ni un ambiguo; con dos apellidos antes («PÉREZ HERNÁNDEZ M. JOSÉ») es el primer nombre: vacío.
+  - ALEXIS y SALOMÉ son ambiguos (se usan para los dos sexos).
+  - Si la tarjeta o WinLab no coinciden con el nombre, mandan ellas y se anota en «Calidad de datos» (solo las letras).
+  - «Por completar» ya no pide el sexo inferido. «Completitud» lo cuenta aparte («Sexo (inferido del nombre)»), sin
+    mezclarlo con «Sexo (escrito en la tarjeta)». «Con sexo (%)» del Resumen mensual incluye las tres fuentes.
+  - Error esperado: bajo en los nombres que sí se clasifican (no se ha medido contra una muestra real; los casos dudosos
+    se dejan vacíos, así que habrá más vacíos que errores); sobre todo nombres poco usuales del otro sexo. Para un estudio
+    que dependa del sexo, reportar cuántos son inferidos.
+- **Procedimientos del censo y seguimiento de operados** (25 nov 2026, registro 2026.11.26.2). «En procedimientos se centra
+  el total de cirugías que se realizan, al menos de cirugía general; que lo registre, nos servirá para conservar a esos
+  pacientes como seguimiento.»
+  - El script del censo (`censo-sync.gs`, versión 2026.11.25.2) guarda la sección PROCEDIMIENTOS de la hoja en
+    `censo_procedimientos` (una fila por fecha + expediente + nombre normalizado; fecha = celda A2 del censo). El
+    registro la lee **por cursor** (`visto_ultimo`, `id`) con 2 días de margen, dentro de `opcional()`: si falla, solo
+    esa pestaña se queda sin tocar y se avisa.
+  - **Solo hay datos desde el 25 nov 2026**: Google no guarda los censos viejos (la hoja se reescribe cada día). En el
+    Resumen mensual las tres columnas nuevas van vacías antes de noviembre de 2026 (no hay dato, no es cero) y noviembre
+    de 2026 es un mes incompleto.
+  - «ID episodio»: el episodio de «Pacientes» con el mismo expediente y nombre compatible (la regla de identidad del
+    registro, `regMismaPersona`) cuya estancia cubre la fecha (ingreso → egreso; hasta hoy si sigue hospitalizado; hasta
+    la última vez visto si salió de la base sin egreso); nunca una tarjeta duplicada. Se recalcula **cada noche para
+    todas las filas**, así un episodio que aparece después también se liga. «Ambulatorio» = Sí si la cama es EXT o no
+    hay episodio. «Grupo» = el grupo quirúrgico que se reconoce en el diagnóstico (la sección no trae el procedimiento).
+  - Revisión (25 nov 2026): **Vigente = No** para las filas cuyo «Visto por última vez» es anterior (más de 1 min) al
+    más reciente de su misma fecha: el script del censo reescribe juntas las que siguen en la hoja, así que las demás
+    salieron ese día (nombre o expediente corregido, cancelada). No cuentan en el Resumen ni en Seguimiento; la tabla no
+    se borra. Con cama que no es EXT, una cirugía la víspera del ingreso se liga al episodio que ingresó al día
+    siguiente si ninguno cubre la fecha. Con expediente no válido para el registro (menos de 4 dígitos), «Ambulatorio»
+    queda vacío (salvo EXT).
+  - «Seguimiento de operados»: una fila por persona (expediente + nombre compatible; las personas del registro son las
+    de la «Clave de seudónimos») con procedimientos en el censo o cirugías en el registro (sin la programación sin
+    confirmar ni las tarjetas duplicadas). «Reingresos posteriores (n)» = episodios que ingresaron después del primer
+    procedimiento, sin el que lo contiene. Lista de trabajo con nombres, como «Por completar»: **no se comparte**.
+    Revisión (25 nov 2026): «Nombre» (clave) es el primero que se vio, sin acentos ni espacios dobles, y el nombre tal
+    cual va en «Nombre más reciente» (al final); «Días desde el último procedimiento» solo los primeros 30 días (después
+    vacío, para no reescribir cada noche toda la lista); los expedientes no válidos para el registro entran tal cual.
+  - «Análisis · Episodios» y las definiciones del Resumen mensual no cambian; las columnas nuevas van al final.
+- **Talla: ya no se mide** (25 nov 2026). La talla no se registra en este servicio: «Completitud» ya no tiene la fila
+  «Talla» (las de corridas anteriores quedan «Vigente = No») y «Ingresos sin talla (n)» del Resumen mensual se queda
+  vacía en su lugar (quitarla movería las columnas). El IMC se sigue calculando si alguna vez hay talla.
 - **Comorbilidades** (28 oct 2026) desde APP y DX, con negación. Sin APP quedan vacías (desconocidas); el DX solo puede
   marcar 1. Es texto libre: revisar una muestra antes de publicar.
 - **Antibiótico, NPO y NPT** (30 oct 2026): si en la app se puso la fecha de inicio, se anota «desde AAAA-MM-DD» en lugar
@@ -386,7 +448,7 @@ siempre. Cada columna está definida en «Diccionario de variables».
       anteriores, pero no se vuelve a leer WinLab completo: costaría ~57 MB.
     - «Periodo de captura»: «Anterior a la captura estructurada» si el episodio terminó antes del 28 oct 2026.
   - **«Completitud» y «Flujo de la cohorte».** Por mes de ingreso y acumulado, cuántos episodios no duplicados tienen
-    cada dato (edad, sexo por fuente, ingreso, tipo de egreso, dx principal, APP, peso, talla, laboratorio, creatininas,
+    cada dato (edad, sexo por fuente, ingreso, tipo de egreso, dx principal, APP, peso, laboratorio, creatininas,
     albúmina, signos del día 0-1, tromboprofilaxis, cobertura del diario, expediente válido) y, por cirugía, fecha, tipo,
     abordaje, Clavien-Dindo y sangrado. El flujo resta en orden y cada episodio sale en el primer paso que le toca. El
     Resumen mensual gana «Egresos con motivo (%)», «Con sexo (%)» y «Episodios sin labs (n)».
@@ -446,7 +508,7 @@ siempre. Cada columna está definida en «Diccionario de variables».
       que reingresaba entraba de inmediato y el mes reciente salía inflado (hasta 100 %).
     - *Reingreso planeado*: se evalúa por cláusula; nombrar la cirugía previa («PO CIERRE DE ILEOSTOMIA + FUGA») o
       negarla no es planeado, y con una complicación en el diagnóstico del reingreso nunca lo es.
-    - *Flujo de la cohorte* e *Indicadores* usan el mismo universo: «= Episodios analizables» es el denominador de
+    - *Flujo de la cohorte* e *Indicadores* usan el mismo universo: «Episodios analizables» es el denominador de
       «Mortalidad hospitalaria (desenlace conocido)». El episodio sin fecha de ingreso ya no se resta (se cuenta
       aparte) y la tarjeta borrada en la base no entra a ningún denominador.
     - *Cirugía en ≤1 día* y *Estancia posoperatoria* quedan vacías si la cirugía tiene fecha anterior al ingreso.
