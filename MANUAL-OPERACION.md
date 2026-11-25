@@ -2116,3 +2116,22 @@ llegan en vivo igual). Prueba: `app_sync2` S4b/S4c.
 
 **Para revisar el consumo:** Supabase → Organization → Usage (Egress). Con los registros de `edge_logs` se ve qué equipo
 recarga de más (peticiones a `/rest/v1/patients?order=cama` por equipo y por hora; lo normal es 1–3 por hora).
+
+## Registro de pacientes 2026.11.24: integridad, historial e indicadores de calidad (25 de noviembre de 2026)
+
+El registro (`apps-script/registro-pacientes.gs`, detalle en `apps-script/REGISTRO.md`) creció para servir a un estudio de
+calidad, sin subir costos (el consumo nocturno de Supabase baja ~2 MB: WinLab se relee desde 6 h antes y no 2 días).
+
+- **Pestañas nuevas:** «Integridad» (una fila por corrida: resultado, duración, cuadre base contra hoja, avisos),
+  «Estado diario», «Dispositivos», «Drenajes · diario», «Movimientos y estado», «Soporte y exposiciones (historial)»,
+  «Guardia · renglones retirados» (la base los borra a los 7 días), «Análisis · Cirugías», «Análisis · Antibióticos»,
+  «Eventos adversos» (con columna «Revisado» para validar a mano), «Indicadores de calidad» (numerador, denominador,
+  IC 95 %), «Completitud» y «Flujo de la cohorte».
+- **Correcciones:** las cirugías sin fecha ya cuentan en el Resumen mensual; reintervención planeada y no planeada;
+  el motivo de egreso de una copia de rescate llega al episodio; Sección y Especialidad pasan por un catálogo (en el
+  censo había nombres escritos en esa columna y llegaban a las pestañas sin nombres).
+- **Para instalarlo:** script.google.com → proyecto «Registro de pacientes» → borrar todo `Código.gs`, pegar el archivo
+  nuevo, guardar y correr **actualizarRegistro** una vez. La primera carga del historial se reparte sola en varias
+  vueltas de 10 minutos. Revisar después la pestaña «Integridad».
+- **Lo derivado por texto es «probable»:** eventos adversos, comorbilidades y reintervención no planeada deben validarse
+  contra expediente en una muestra antes de publicar.
