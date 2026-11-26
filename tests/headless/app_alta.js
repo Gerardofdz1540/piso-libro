@@ -476,6 +476,34 @@ function unzip(buf) {
     check('R13 la tarjeta muestra el DX del paciente (censo) aunque este equipo tenga una copia vieja tecleada (nd.dx); mientras se edita aquí (dirty o con el cursor en la caja) se ve lo tecleado',
       r.enCard && /DEL CENSO/.test(r.ver) && r.editando === 'SÍNDROME POSTPARO IN+ PO' && r.conFoco === 'SÍNDROME POSTPARO IN+ PO' && r.vacio === 'SÍNDROME POSTPARO IN+ PO', JSON.stringify(r));
   }
+  // R13b — revisión del arreglo: (1) «↩ Regresar» después de 🕘 Restaurar vuelve al DX que se veía (el del paciente),
+  // no a la copia local vieja; (2) 🕘 marca como «Ahora» el DX vigente; (3) el autoguardado sube el DX tecleado aunque la
+  // caja no suelte el foco (si la app se cierra así, lo tecleado ya está en patients.dx).
+  {
+    const r = await page.evaluate(async (k) => {
+      const p = patients.find(x => pid(x) === k), nd = noteData[k] || (noteData[k] = defaultData());
+      const antP = p.dx, antN = nd.dx;
+      p.dx = 'DX CENSO VIGENTE'; nd.dx = 'DX VIEJO LOCAL 22:50';
+      const ahora = _histCurrent(k, 'dx');
+      const subidos = []; const orig = window._savePtsImmediate;
+      _savePtsImmediate = function (pt, f) { subidos.push(pt.dx); };
+      updateField(k, 'dx', 'DX VERSION RESTAURADA');
+      const pila = _undoLoad()[k] || [];
+      const u = pila[pila.length - 1]; const prevCapt = u && u.note ? u.note.dx : 'SIN-PASO';
+      // (3) teclear con la caja enfocada y esperar el autoguardado (900 ms)
+      p.dx = 'DX CENSO VIGENTE';
+      const ta = document.createElement('textarea'); ta.dataset.key = k; ta.dataset.field = 'dx'; document.body.appendChild(ta); ta.focus();
+      ta.value = 'DX CENSO VIGENTE + TECLEADO'; liveUpdate(ta);
+      await new Promise(res => setTimeout(res, 1300));
+      const trasAuto = p.dx; ta.remove();
+      _savePtsImmediate = orig;
+      p.dx = antP; nd.dx = antN;
+      return { ahora, prevCapt, subidos, trasAuto };
+    }, K1);
+    check('R13b DX: 🕘 «Ahora» = DX del paciente; el paso de «Regresar» guarda el DX que se veía (no la copia vieja); el autoguardado sube lo tecleado con la caja enfocada',
+      r.ahora === 'DX CENSO VIGENTE' && r.prevCapt === 'DX CENSO VIGENTE' && r.subidos.indexOf('DX VERSION RESTAURADA') >= 0
+      && r.subidos.indexOf('DX CENSO VIGENTE + TECLEADO') >= 0 && r.trasAuto === 'DX CENSO VIGENTE + TECLEADO', JSON.stringify(r));
+  }
   // R12 — publicación (25 nov 2026): deploy-pages.yml y netlify.toml copiaban solo vendor/*.js y Cloudflare servía la
   // PÁGINA (200 text/html) en lugar del encabezado; el SW la guardaba como si fuera la imagen. Todo lo que el SW pide
   // de ./vendor/ debe existir y publicarse; una respuesta HTML no entra al Word (firma PNG).
