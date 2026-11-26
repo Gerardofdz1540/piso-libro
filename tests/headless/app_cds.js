@@ -52,7 +52,7 @@ const PTS = [
     window.__esc = function (o) {
       const i = o.pi || 0; const p = Object.assign({}, patients[i], o.p || {}); const k = pid(patients[i]);
       const nd = defaultData();
-      nd.dx = o.dx != null ? o.dx : p.dx; nd.app = o.app || ''; nd.pa = o.pa || ''; nd.pendientes = o.pend || ''; nd.manejo = o.manejo || '';
+      nd.dx = o.dx != null ? o.dx : p.dx; p.dx = nd.dx; /* el DX vive en el paciente (26 nov 2026) */ nd.app = o.app || ''; nd.pa = o.pa || ''; nd.pendientes = o.pend || ''; nd.manejo = o.manejo || '';
       nd.labHistory = (o.labs || []).map(function (x) { return { fecha: iso(x[0]), labs: x[1], extra: [] }; });
       Object.assign(nd.checklist, o.ck || {});
       if (o.ind) localStorage.setItem('pl_ind_v23_blocks', JSON.stringify([Object.assign({ cama: p.cama.replace(/^\d-/, ''), nombre: p.nombre, fecha: iso(0), DIETA: [], SOLUCIONES: [], MEDICAMENTOS: [], 'ANTIBIÓTICOS': [], 'MEDIDAS GENERALES': [] }, o.ind)]));

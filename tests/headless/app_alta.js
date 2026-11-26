@@ -455,6 +455,55 @@ function unzip(buf) {
       && /if not exists \(select 1 from public\.altas_docs where creado_uid is null\) then\s+alter table public\.altas_docs alter column creado_uid set not null/.test(sql)
       && /add column if not exists ultimo_intento timestamptz/.test(sql) && /ultimo_intento is null/.test(pol), pol);
   }
+  // R13 — DX que se muestra (26 nov 2026, UCI 1): nd.dx (copia de edición de este equipo) ya no tapa el DX del paciente
+  // que trae el censo; solo mientras el DX se está editando aquí (dirty) se ve lo tecleado.
+  {
+    const r = await page.evaluate((k) => {
+      const p = patients.find(x => pid(x) === k), nd = noteData[k] || (noteData[k] = defaultData());
+      const antP = p.dx, antN = nd.dx;
+      p.dx = 'SÍNDROME POSTPARO FASE INTERMEDIA + PIE DIABÉTICO IZQUIERDO (DEL CENSO)'; nd.dx = 'SÍNDROME POSTPARO IN+ PO';
+      const card = renderFullCard(p, nd, k);
+      const ver = _dxVer(p, nd, k);
+      (_dirtyFields[k] = _dirtyFields[k] || new Set()).add('dx');
+      const editando = _dxVer(p, nd, k);
+      _dirtyFields[k].delete('dx');
+      const ta = document.createElement('textarea'); ta.dataset.key = k; ta.dataset.field = 'dx'; document.body.appendChild(ta); ta.focus();
+      const conFoco = _dxVer(p, nd, k); ta.remove();
+      const vacio = (p.dx = '', _dxVer(p, nd, k));
+      p.dx = antP; nd.dx = antN;
+      return { enCard: card.indexOf('(DEL CENSO)') >= 0 && card.indexOf('IN+ PO') < 0, ver, editando, conFoco, vacio };
+    }, K1);
+    check('R13 la tarjeta muestra el DX del paciente (censo) aunque este equipo tenga una copia vieja tecleada (nd.dx); mientras se edita aquí (dirty o con el cursor en la caja) se ve lo tecleado',
+      r.enCard && /DEL CENSO/.test(r.ver) && r.editando === 'SÍNDROME POSTPARO IN+ PO' && r.conFoco === 'SÍNDROME POSTPARO IN+ PO' && r.vacio === 'SÍNDROME POSTPARO IN+ PO', JSON.stringify(r));
+  }
+  // R13b — revisión del arreglo: (1) «↩ Regresar» después de 🕘 Restaurar vuelve al DX que se veía (el del paciente),
+  // no a la copia local vieja; (2) 🕘 marca como «Ahora» el DX vigente; (3) el autoguardado sube el DX tecleado aunque la
+  // caja no suelte el foco (si la app se cierra así, lo tecleado ya está en patients.dx).
+  {
+    const r = await page.evaluate(async (k) => {
+      const p = patients.find(x => pid(x) === k), nd = noteData[k] || (noteData[k] = defaultData());
+      const antP = p.dx, antN = nd.dx;
+      p.dx = 'DX CENSO VIGENTE'; nd.dx = 'DX VIEJO LOCAL 22:50';
+      const ahora = _histCurrent(k, 'dx');
+      const subidos = []; const orig = window._savePtsImmediate;
+      _savePtsImmediate = function (pt, f) { subidos.push(pt.dx); };
+      updateField(k, 'dx', 'DX VERSION RESTAURADA');
+      const pila = _undoLoad()[k] || [];
+      const u = pila[pila.length - 1]; const prevCapt = u && u.note ? u.note.dx : 'SIN-PASO';
+      // (3) teclear con la caja enfocada y esperar el autoguardado (900 ms)
+      p.dx = 'DX CENSO VIGENTE';
+      const ta = document.createElement('textarea'); ta.dataset.key = k; ta.dataset.field = 'dx'; document.body.appendChild(ta); ta.focus();
+      ta.value = 'DX CENSO VIGENTE + TECLEADO'; liveUpdate(ta);
+      await new Promise(res => setTimeout(res, 1300));
+      const trasAuto = p.dx; ta.remove();
+      _savePtsImmediate = orig;
+      p.dx = antP; nd.dx = antN;
+      return { ahora, prevCapt, subidos, trasAuto };
+    }, K1);
+    check('R13b DX: 🕘 «Ahora» = DX del paciente; el paso de «Regresar» guarda el DX que se veía (no la copia vieja); el autoguardado sube lo tecleado con la caja enfocada',
+      r.ahora === 'DX CENSO VIGENTE' && r.prevCapt === 'DX CENSO VIGENTE' && r.subidos.indexOf('DX VERSION RESTAURADA') >= 0
+      && r.subidos.indexOf('DX CENSO VIGENTE + TECLEADO') >= 0 && r.trasAuto === 'DX CENSO VIGENTE + TECLEADO', JSON.stringify(r));
+  }
   // R12 — publicación (25 nov 2026): deploy-pages.yml y netlify.toml copiaban solo vendor/*.js y Cloudflare servía la
   // PÁGINA (200 text/html) en lugar del encabezado; el SW la guardaba como si fuera la imagen. Todo lo que el SW pide
   // de ./vendor/ debe existir y publicarse; una respuesta HTML no entra al Word (firma PNG).
