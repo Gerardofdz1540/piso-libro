@@ -93,6 +93,8 @@ const DISP = [
       const p = patients[i], k = pid(p);
       const nd = defaultData(); Object.assign(nd, o.nd || {}); Object.assign(nd.checklist, o.ck || {});
       noteData[k] = nd;
+      // El DX vive en el paciente (patients.dx; 26 nov 2026 la tarjeta muestra ese y no la copia de edición nd.dx).
+      if (o.nd && typeof o.nd.dx === 'string') p.dx = o.nd.dx;
       if (!document.getElementById('card-' + k)) focusGoTo(k);   // en el tablero solo se pinta la tarjeta en foco
       _rerenderCard(k);
       return k;
