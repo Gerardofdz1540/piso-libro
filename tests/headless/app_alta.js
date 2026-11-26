@@ -455,6 +455,27 @@ function unzip(buf) {
       && /if not exists \(select 1 from public\.altas_docs where creado_uid is null\) then\s+alter table public\.altas_docs alter column creado_uid set not null/.test(sql)
       && /add column if not exists ultimo_intento timestamptz/.test(sql) && /ultimo_intento is null/.test(pol), pol);
   }
+  // R13 — DX que se muestra (26 nov 2026, UCI 1): nd.dx (copia de edición de este equipo) ya no tapa el DX del paciente
+  // que trae el censo; solo mientras el DX se está editando aquí (dirty) se ve lo tecleado.
+  {
+    const r = await page.evaluate((k) => {
+      const p = patients.find(x => pid(x) === k), nd = noteData[k] || (noteData[k] = defaultData());
+      const antP = p.dx, antN = nd.dx;
+      p.dx = 'SÍNDROME POSTPARO FASE INTERMEDIA + PIE DIABÉTICO IZQUIERDO (DEL CENSO)'; nd.dx = 'SÍNDROME POSTPARO IN+ PO';
+      const card = renderFullCard(p, nd, k);
+      const ver = _dxVer(p, nd, k);
+      (_dirtyFields[k] = _dirtyFields[k] || new Set()).add('dx');
+      const editando = _dxVer(p, nd, k);
+      _dirtyFields[k].delete('dx');
+      const ta = document.createElement('textarea'); ta.dataset.key = k; ta.dataset.field = 'dx'; document.body.appendChild(ta); ta.focus();
+      const conFoco = _dxVer(p, nd, k); ta.remove();
+      const vacio = (p.dx = '', _dxVer(p, nd, k));
+      p.dx = antP; nd.dx = antN;
+      return { enCard: card.indexOf('(DEL CENSO)') >= 0 && card.indexOf('IN+ PO') < 0, ver, editando, conFoco, vacio };
+    }, K1);
+    check('R13 la tarjeta muestra el DX del paciente (censo) aunque este equipo tenga una copia vieja tecleada (nd.dx); mientras se edita aquí (dirty o con el cursor en la caja) se ve lo tecleado',
+      r.enCard && /DEL CENSO/.test(r.ver) && r.editando === 'SÍNDROME POSTPARO IN+ PO' && r.conFoco === 'SÍNDROME POSTPARO IN+ PO' && r.vacio === 'SÍNDROME POSTPARO IN+ PO', JSON.stringify(r));
+  }
   // R12 — publicación (25 nov 2026): deploy-pages.yml y netlify.toml copiaban solo vendor/*.js y Cloudflare servía la
   // PÁGINA (200 text/html) en lugar del encabezado; el SW la guardaba como si fuera la imagen. Todo lo que el SW pide
   // de ./vendor/ debe existir y publicarse; una respuesta HTML no entra al Word (firma PNG).

@@ -5736,7 +5736,7 @@ const PLCDS = (function() {
       const d = diasDesde(e.f); if (maxDias != null && d !== null && d > maxDias) return null;
       return { n: n, f: e.f, d: d };
     };
-    const dx = N((nd && nd.dx) || (p && p.dx) || "");
+    const dx = N(_dxVer(p, nd) || "");
     const txt = dx + " \n " + N((nd && nd.app) || "") + " \n " + N((nd && nd.pa) || "");
     const clin = N(((nd && nd.pendientes) || "") + " \n " + ((nd && nd.manejo) || ""));
     const actual = dx + " \n " + N((nd && nd.pa) || "") + " \n " + clin;   // lo de ESTE internamiento (sin APP: un STDA de hace años no cuenta)
@@ -15173,6 +15173,25 @@ function plExportBackup() {
       const m = _localFieldTouch[k] || (_localFieldTouch[k] = {}); const t = Date.now();
       fields.forEach(function (f) { m[f] = t; });
     }
+    // DX que se muestra (26 nov 2026): el DX vive en el paciente (patients.dx, lo que sincroniza el censo y los demás
+    // equipos). nd.dx es solo la copia de edición de ESTE equipo: se escribe al editar la caja y nadie la borraba cuando
+    // el censo cambiaba el DX, así que «nd.dx || p.dx» dejaba la tarjeta fija en lo último que se tecleó aquí (UCI 1:
+    // «SÍNDROME POSTPARO IN+ PO» de las 22:50 contra el DX completo del censo). Manda el del paciente; la copia local solo
+    // mientras ese DX se está editando aquí y aún no se sube (dirty), o si el paciente no trae DX.
+    function _dxVer(p, nd, k) {
+      const loc = nd && typeof nd.dx === "string" ? nd.dx : "";
+      const nube = p ? toSafeString(p.dx) : "";
+      let sucio = false;
+      try {
+        const kk = k || (p ? pid(p) : "");
+        sucio = !!kk && _dirtyUnion(kk).has("dx");
+        // Con el cursor en la caja de DX de este paciente también manda lo tecleado: el autoguardado de la nota quita la
+        // marca dirty antes de soltar la caja (onchange es el que sube patients.dx) y un repintado mostraría el DX viejo.
+        const ae = !sucio && kk && typeof document !== "undefined" ? document.activeElement : null;
+        if (ae && ae.dataset && ae.dataset.field === "dx" && ae.dataset.key === kk) sucio = true;
+      } catch (_) {}
+      return sucio ? (loc || nube) : (nube || loc);
+    }
     function _dirtyUnion(k) {
       const s = new Set();
       [_dirtyFields[k], _pendingDirty[k], _inflightDirty[k]].forEach(function (set) { if (set) set.forEach(function (f) { s.add(f); }); });
@@ -20498,7 +20517,7 @@ function plExportBackup() {
         + '<div class="ff2-idc"><span>Sexo</span><b>' + (_fbEsc(sexo) || "—") + '</b></div>'
         + '<div class="ff2-idc"><span>Exp</span><b>' + _fbEsc(_fbVal(p.exp)) + '</b></div>'
         + '</div>';
-      out += '<div class="ff2-dx">' + fbField("Dx:", "dx", (nd.dx || p.dx), 2) + '</div>';
+      out += '<div class="ff2-dx">' + fbField("Dx:", "dx", _dxVer(p, nd, k), 2) + '</div>';
       out += '<div class="ff2-vit"><span class="fb-zh">Signos vitales</span><div class="ff2-vit-grid">' + pmHtml + '</div></div>';
       out += '<div class="ff2-dren fb-drains"><span class="fb-zh">Sondas / Balance:</span><div class="ff2-vit-grid" style="margin:4px 0 8px">' + pm2Html + '</div>' + drainsInner + '</div>';
       out += '<div class="ff2-eprow">'
@@ -22234,7 +22253,7 @@ function plExportBackup() {
         return `<div class="fc-bento">
       <div class="fc-main">
       <div ${anchor("rec", "rec")} data-sec="rec">${renderPtReminders(nd, k)}</div>
-      <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", nd.dx || p.dx, k, "dx", 2)}${(function () { try { return _dxPrincipalHtml(p, nd, k); } catch (_) { return ""; } })()}${_porCompletarHtml(p, nd, k)}</div>
+      <div ${anchor("dx", "dx")}>${fieldRow("🔴 DX / Motivo de ingreso", _dxVer(p, nd, k), k, "dx", 2)}${(function () { try { return _dxPrincipalHtml(p, nd, k); } catch (_) { return ""; } })()}${_porCompletarHtml(p, nd, k)}</div>
       <div ${anchor("labs")} style="margin-top:8px">${_labsDiariosLinea(p, nd)}${((window.__focusPid === k || window.__rondaPid === k) && typeof renderFocusLabs === 'function') ? renderFocusLabs(nd, k) : renderLabSection(nd, k)}${(function () { try { return renderWinlabOtrosSection(p, nd, k); } catch (_) { return ""; } })()}</div>
       <div ${anchor("cx", "cx")} style="margin-top:8px">${renderCirugiasSection(nd, k)}</div>
       <div ${anchor("manejo", "manejo")} style="margin-top:8px">${fieldRow("🗂️ Otros (lo que no cabe en otra caja)", nd.manejo, k, "manejo", 3)}</div>
@@ -32665,7 +32684,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // que volvió— se actualiza sola (_plVersionAutoActualizar); si algo no se alcanza a subir, no recarga y queda la barra.
     // Sin red o si version.json falla, nada. En pruebas automatizadas (navigator.webdriver) y en copias
     // locales (localhost, file://) no se revisa nada, salvo con window.__PL_BUILD_TEST__ (tests/headless/app_hotfix_carga.js).
-    const PL_BUILD = "2026.11.25-3";
+    const PL_BUILD = "2026.11.26-1";
     const PL_VER_PRIMERA_MS = 15000, PL_VER_CADA_MS = 3 * 60000, PL_VER_MIN_MS = 60000, PL_VER_SUBIR_MS = 8000;
     // «Actualizar»: espera máxima a que el SW nuevo tome el control y, si la recarga no ocurre, cuándo la barra se rescata.
     const PL_VER_SW_MS = 8000, PL_VER_RESCATE_MS = 15000;
@@ -33463,7 +33482,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     function _dxPrincipalDe(p, nd) {
       const ck = (nd && nd.checklist) || {};
       if (DX_CAT_MAP[ck.dx_cat]) return { cat: ck.dx_cat, auto: false };
-      return { cat: _dxCatSugerida((nd && nd.dx) || (p && p.dx)), auto: true };
+      return { cat: _dxCatSugerida(_dxVer(p, nd)), auto: true };
     }
     function _dxPrincipalHtml(p, nd, k) {
       const d = _dxPrincipalDe(p, nd), cur = d.cat;
@@ -33512,7 +33531,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
     // escribe nada en ninguna caja. «✓» cuando ya hay labs con la fecha de hoy.
     function _labsDiariosMotivos(p, nd) {
       const ck = (nd && nd.checklist) || {}, m = [];
-      const dx = toSafeString((nd && nd.dx) || (p && p.dx)).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+      const dx = toSafeString(_dxVer(p, nd)).normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
       if (/COLANGITIS/.test(dx)) m.push("colangitis");
       if (/PANCREATITIS/.test(dx) || ck.dx_cat === "pancreatitis") m.push("pancreatitis");
       const iotDx = /\bINTUBAD[OA]\b|\bIOT\b|\bVMI\b|VENTILACION MECANICA/.test(dx) && !/EXTUBAD|EXTUBACION|\bNO INTUBAD|\bSIN IOT\b/.test(dx);
@@ -34329,7 +34348,7 @@ Esquema exacto a devolver (deja "" si el campo no está en el documento, false p
 
       const lineas = [
         `╔══ ${p.cama} · ${p.nombre} · ${p.edad}a ══`,
-        `Dx: ${(nd.dx || p.dx || "—").trim()}`,
+        `Dx: ${(_dxVer(p, nd, k) || "—").trim()}`,
         p.esp ? `Esp: ${p.esp}` : null,
         (p.adscrito || p.residente) ? `Ads/Res: ${p.adscrito || "—"} / ${p.residente || "—"}` : null,
         `Ing: ${p.ingreso || "—"} (Día ${daysSince(p.ingreso)})`,
